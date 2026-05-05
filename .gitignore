@@ -1,0 +1,80 @@
+# Environment
+.env
+.env.local
+.env.*.local
+*.envrc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+coverage.xml
+
+# Linters and type checkers
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data (large files, gitignored — use DVC or LFS in production)
+data/raw/*
+data/processed/*
+data/synthetic/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/synthetic/.gitkeep
+
+# SEC EDGAR cache
+sec-edgar-filings/
+
+# Logs
+*.log
+logs/
+
+# LangGraph checkpoints (SQLite local dev)
+*.sqlite
+*.db
+checkpoints/
+
+# Docker
+docker-compose.override.yml
+
+# Temporary and Portfolio Cleanup
+scratch/
+*.md
+!README.md
+!docs/**/*.md
+apply_migration.py
+.gitignore.txt
+env.example.txt
+Fixing Ingestion Deduplication and Logging.md

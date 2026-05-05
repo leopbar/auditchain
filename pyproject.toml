@@ -1,0 +1,120 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auditchain"
+version = "0.1.0"
+description = "Multi-agent system for continuous financial audit and fraud detection on SEC filings"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Your Name", email = "you@example.com" }]
+keywords = ["langchain", "langgraph", "audit", "fraud-detection", "multi-agent", "sec-edgar"]
+
+dependencies = [
+    # Core LLM stack
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-anthropic>=0.2.0",
+    "langgraph>=0.2.50",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langsmith>=0.1.140",
+
+    # Data layer
+    "sqlalchemy[asyncio]>=2.0.30",
+    "alembic>=1.13.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
+    "pgvector>=0.3.0",
+    "duckdb>=1.1.0",
+
+    # SEC EDGAR ingestion
+    "sec-edgar-downloader>=5.0.3",
+    "edgartools>=3.0.0",
+    "requests>=2.32.0",
+    "httpx>=0.27.0",
+
+    # Data processing
+    "pandas>=2.2.0",
+    "polars>=1.0.0",
+    "numpy>=1.26.0",
+    "scipy>=1.13.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+
+    # API and UI
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "streamlit>=1.39.0",
+
+    # Observability
+    "structlog>=24.4.0",
+    "rich>=13.8.0",
+
+    # Utils
+    "python-dotenv>=1.0.0",
+    "tenacity>=9.0.0",
+    "tiktoken>=0.7.0",
+    "pyyaml>=6.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+    "pre-commit>=3.8.0",
+    "ipykernel>=6.29.0",
+    "jupyterlab>=4.2.0",
+]
+
+[project.scripts]
+auditchain = "auditchain.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/auditchain"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ARG", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG"]
+"notebooks/**/*.py" = ["E", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["edgartools.*", "sec_edgar_downloader.*", "pgvector.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --strict-markers --tb=short --cov=auditchain --cov-report=term-missing"
+markers = [
+    "unit: fast unit tests with no external dependencies",
+    "integration: tests requiring database or external services",
+    "e2e: full end-to-end tests with real LLM calls (slow, costly)",
+    "llm: tests that hit real LLM APIs (skipped by default in CI)",
+]
+
+[tool.coverage.run]
+source = ["src/auditchain"]
+omit = ["*/tests/*", "*/notebooks/*"]

@@ -1,0 +1,41 @@
+name: auditchain
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: auditchain-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-auditchain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-auditchain_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-auditchain}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-auditchain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: auditchain-langfuse
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-auditchain}:${POSTGRES_PASSWORD:-auditchain_dev}@postgres:5432/${POSTGRES_DB:-auditchain}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      SALT: ${LANGFUSE_SALT:-change-me-in-production}
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+
+volumes:
+  postgres_data:
+    name: auditchain_postgres_data
