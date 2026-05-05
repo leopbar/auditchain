@@ -32,17 +32,20 @@ Coordinated by **LangGraph**, five specialized agents work together in a structu
 - **Persistent audit history**: Every run is stored in a relational database for future review.
 - **Professional executive reports**: High-fidelity summaries with deterministic risk scoring.
 
-## 🖼️ Screenshots
-<!-- Screenshots to be added. See docs/screenshots/README.md for capture instructions -->
-| Dashboard | Live Audit |
-| :---: | :---: |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Live Audit](docs/screenshots/live-audit.png) |
-| *Executive dashboard with audit history* | *Watching the agents work in real-time* |
+## 🖼️ Demo
+To see AuditChain in action, we've broken down the pipeline into three key stages:
 
-| Final Report | Add Company |
-| :---: | :---: |
-| ![Final Report](docs/screenshots/report.png) | ![Add Company](docs/screenshots/add-company.png) |
-| *Professional audit report with risk score* | *Self-service company onboarding* |
+### 1. Ingestion & Data Collection
+![Data Collection](docs/screenshots/auditChain1.gif)
+*The system fetches and indexes SEC filings, preparing the data for multi-agent analysis.*
+
+### 2. Forensic Analysis (Reconciler & Quant)
+![Forensic Analysis](docs/screenshots/auditChain2.gif)
+*Agents verify accounting equations and apply forensic models (Beneish/Altman) to detect anomalies.*
+
+### 3. Deep Investigation & Final Report
+![Final Report](docs/screenshots/auditChain3.gif)
+*The Investigator performs RAG-based analysis on qualitative disclosures, and the Supervisor generates the final executive report.*
 
 ## 🏗️ Architecture
 ```mermaid
