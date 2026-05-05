@@ -9,7 +9,7 @@ description = "Multi-agent system for continuous financial audit and fraud detec
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "Leonardo P Barretti", email = "lbarretti@gmail.com" }]
 keywords = ["langchain", "langgraph", "audit", "fraud-detection", "multi-agent", "sec-edgar"]
 
 dependencies = [
