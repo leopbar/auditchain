@@ -9,7 +9,15 @@
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-<!-- TODO: insert screenshot at docs/screenshots/dashboard.png -->
+---
+
+## 🌐 Live App
+The production version of AuditChain is live at:
+**[https://audit-bigfour.duckdns.org](https://audit-bigfour.duckdns.org)**
+
+> [!IMPORTANT]
+> **Want to test the platform?**  
+> Access is currently restricted for security and cost management. If you are a recruiter, developer, or finance professional and would like a demo account, please **contact me directly** (links below).
 
 ---
 
@@ -214,6 +222,8 @@ See [docs/adrs/](docs/adrs/) for detailed Architecture Decision Records.
 ## 👤 Author
 Built by **Leonardo P Barretti**  
 [lbarretti@gmail.com](mailto:lbarretti@gmail.com) | [LinkedIn](https://www.linkedin.com/in/leonardo-barretti/)
+
+**Interested in a partnership or a technical deep dive?** Reach out via email or LinkedIn. I'm always open to discussing AI agents, forensic finance, and system architecture.
 
 ## 📄 License
 Released under the [MIT License](LICENSE).
