@@ -8,6 +8,9 @@ from auditchain.api.limiter import limiter
 from auditchain.auth import repository, schemas, service
 from auditchain.auth.dependencies import get_current_user
 from auditchain.data.database import get_async_session
+from auditchain.core.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -47,19 +50,21 @@ async def login(
     refresh_token = service.create_refresh_token(payload)
 
     # Set HTTP-only cookies for maximum security
+    is_prod = settings.environment == "production"
+    
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         samesite="strict",
-        secure=False,  # Set to True in production (HTTPS required)
+        secure=is_prod,
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         samesite="strict",
-        secure=False,
+        secure=is_prod,
     )
 
     return user
@@ -96,12 +101,14 @@ async def refresh(
 
     new_access_token = service.create_access_token({"sub": user.email, "role": user.role})
 
+    is_prod = settings.environment == "production"
+    
     response.set_cookie(
         key="access_token",
         value=new_access_token,
         httponly=True,
         samesite="strict",
-        secure=False,
+        secure=is_prod,
     )
 
     return {"message": "token refreshed"}
