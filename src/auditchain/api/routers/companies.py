@@ -13,9 +13,14 @@ from auditchain.core.logging import get_logger
 from auditchain.data.database import get_session
 from auditchain.data.models import CompanyORM, FilingORM, DisclosureORM
 from auditchain.api.schemas.responses import CompanyResponse, CompanyListResponse
+from auditchain.auth.dependencies import get_current_user
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/api/companies", tags=["companies"])
+router = APIRouter(
+    prefix="/api/companies", 
+    tags=["companies"],
+    dependencies=[Depends(get_current_user)]
+)
 
 @router.get("/", response_model=CompanyListResponse)
 async def list_companies():

@@ -11,7 +11,7 @@ import time
 from typing import Optional, Dict, Any, List
 
 import httpx
-from fastapi import APIRouter, HTTPException, BackgroundTasks, status, Path, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, status, Path, Query, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 
@@ -27,9 +27,14 @@ from auditchain.schemas.ingestion import (
 )
 from auditchain.api.events.ingestion_subscriber import subscribe_to_ingestion
 from auditchain.api.services.ingestion_runner import run_ingestion_with_streaming
+from auditchain.auth.dependencies import get_current_user
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/api/companies", tags=["ingestion"])
+router = APIRouter(
+    prefix="/api/companies", 
+    tags=["ingestion"],
+    dependencies=[Depends(get_current_user)]
+)
 
 # SEC Directory Cache
 _sec_directory_cache: Optional[Dict[str, Any]] = None

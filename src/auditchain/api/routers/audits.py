@@ -7,7 +7,7 @@ and retrieval of historical audit results and traces.
 import uuid
 import asyncio
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, BackgroundTasks, status, Path, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, status, Path, Query, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import Session
@@ -24,9 +24,14 @@ from auditchain.api.schemas.responses import (
 )
 from auditchain.api.events.subscriber import subscribe_to_audit
 from auditchain.api.services.audit_runner import run_audit_with_streaming
+from auditchain.auth.dependencies import get_current_user
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/api/audits", tags=["audits"])
+router = APIRouter(
+    prefix="/api/audits", 
+    tags=["audits"],
+    dependencies=[Depends(get_current_user)]
+)
 
 # Concurrency control
 _audit_in_progress = False

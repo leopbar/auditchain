@@ -12,6 +12,7 @@ swap to async sessions later without changing the repository layer.
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -82,6 +83,9 @@ def get_session() -> Generator[Session, None, None]:
     try:
         yield session
         session.commit()
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 401) without logging them as database errors
+        raise
     except Exception:
         session.rollback()
         logger.exception("database_session_rollback")
@@ -96,6 +100,9 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
+        except HTTPException:
+            # Re-raise HTTP exceptions (like 401) without logging them as database errors
+            raise
         except Exception:
             await session.rollback()
             logger.exception("database_async_session_rollback")
