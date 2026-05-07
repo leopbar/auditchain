@@ -4,6 +4,8 @@ import { listCompanies, listAudits } from "@/lib/api/client";
 import { DashboardSection } from "@/components/dashboard/dashboard-section";
 import type { Company, AuditSummary } from "@/types/audit";
 
+import { cookies } from "next/headers";
+
 // Force dynamic rendering to ensure fresh data on every visit
 export const dynamic = "force-dynamic";
 
@@ -13,10 +15,13 @@ export default async function HomePage() {
   let error: string | null = null;
   
   try {
-    // Parallel fetch of companies and audits
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore.toString();
+
+    // Parallel fetch of companies and audits with forwarded cookies
     const [companiesRes, auditsRes] = await Promise.all([
-      listCompanies(),
-      listAudits()
+      listCompanies({ headers: { Cookie: cookieHeader } }),
+      listAudits({}, { headers: { Cookie: cookieHeader } })
     ]);
     
     companies = companiesRes.companies;

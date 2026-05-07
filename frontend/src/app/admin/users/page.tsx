@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
-import { Plus, Users } from "lucide-react"
+import { Plus, Users, ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { UserTable } from "@/components/auth/user-table"
@@ -31,6 +32,7 @@ import {
  * Allows admins to view the user list, create new accounts, and deactive/delete existing ones.
  */
 export default function UserManagementPage() {
+  const router = useRouter()
   const [users, setUsers] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -134,6 +136,15 @@ export default function UserManagementPage() {
     <div className="container mx-auto py-10 px-6 space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => router.push("/")}
+            className="mb-2 h-8 text-neutral-500 hover:text-neutral-900 -ml-2"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
           <div className="flex items-center gap-2">
             <Users className="h-6 w-6 text-neutral-900 dark:text-neutral-50" />
             <h1 className="text-3xl font-bold tracking-tight">User Management</h1>

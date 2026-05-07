@@ -22,6 +22,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   
   const response = await fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
@@ -43,12 +44,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 // Companies
-export async function listCompanies(): Promise<CompanyListResponse> {
-  return request<CompanyListResponse>("/api/companies/");
+export async function listCompanies(options: RequestInit = {}): Promise<CompanyListResponse> {
+  return request<CompanyListResponse>("/api/companies/", options);
 }
 
-export async function getCompany(cik: string): Promise<Company> {
-  return request<Company>(`/api/companies/${cik}`);
+export async function getCompany(cik: string, options: RequestInit = {}): Promise<Company> {
+  return request<Company>(`/api/companies/${cik}`, options);
 }
 
 // Audits
@@ -59,10 +60,13 @@ export async function startAudit(payload: CreateAuditRequest): Promise<CreateAud
   });
 }
 
-export async function listAudits(params?: {
-  limit?: number;
-  status?: string;
-}): Promise<AuditListResponse> {
+export async function listAudits(
+  params?: {
+    limit?: number;
+    status?: string;
+  },
+  options: RequestInit = {}
+): Promise<AuditListResponse> {
   const query = new URLSearchParams();
   if (params?.limit) query.set("limit", params.limit.toString());
   if (params?.status) query.set("status", params.status);
@@ -70,7 +74,7 @@ export async function listAudits(params?: {
   const queryStr = query.toString();
   const path = queryStr ? `/api/audits/?${queryStr}` : "/api/audits/";
   
-  return request<AuditListResponse>(path);
+  return request<AuditListResponse>(path, options);
 }
 
 export async function getAuditDetail(runId: string): Promise<AuditDetail> {

@@ -3,32 +3,53 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ShieldCheck, Users } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ShieldCheck, Users, LogOut } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 /**
  * Global application header.
- * Displays the logo and conditionally renders administrative links based on user role.
+ * Displays the logo, administrative links, and session controls.
  */
 export function Header() {
+  const router = useRouter()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [user, setUser] = useState<{ email: string; full_name: string | null } | null>(null)
 
-  // Check user role on mount to conditionally show admin links
+  // Check user session and role on mount
   useEffect(() => {
-    async function checkRole() {
+    async function checkAuth() {
       try {
         const response = await fetch("http://localhost:8000/auth/me", {
           credentials: "include",
         })
         if (response.ok) {
-          const user = await response.json()
-          setIsAdmin(user.role === "admin")
+          const userData = await response.json()
+          setUser(userData)
+          setIsAdmin(userData.role === "admin")
         }
       } catch (e) {
         // Silently fail: user is either not logged in or server is unreachable
       }
     }
-    checkRole()
+    checkAuth()
   }, [])
+
+  // Handle session termination
+  const handleLogout = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      })
+      if (response.ok) {
+        router.push("/login")
+        router.refresh() // Ensure server-side cookies are cleared in the cache
+      }
+    } catch (e) {
+      console.error("Logout error:", e)
+    }
+  }
 
   return (
     <header className="border-b border-neutral-200 bg-white sticky top-0 z-40 dark:bg-neutral-950 dark:border-neutral-800">
@@ -53,9 +74,30 @@ export function Header() {
               User Management
             </Link>
           )}
-          <div className="text-xs text-neutral-500 hidden sm:block">
-            Powered by 5 specialized AI agents
-          </div>
+
+          {user ? (
+            <div className="flex items-center gap-4">
+              <div className="hidden md:block text-right">
+                <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">
+                  {user.full_name || user.email}
+                </p>
+                <p className="text-[10px] text-neutral-500">Active Session</p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleLogout}
+                className="text-neutral-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </Button>
+            </div>
+          ) : (
+            <div className="text-xs text-neutral-500 hidden sm:block">
+              Powered by 5 specialized AI agents
+            </div>
+          )}
         </div>
       </div>
     </header>
