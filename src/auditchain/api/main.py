@@ -6,12 +6,16 @@ Provides the API server configuration, CORS middleware, and initial endpoints.
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
+
+from auditchain.api.limiter import limiter
 
 from auditchain.core.config import get_settings
 from auditchain.core.logging import configure_logging, get_logger
 from auditchain.data.database import get_session
-from auditchain.api.routers import companies, audits, ingestion
+from auditchain.api.routers import audits, auth, companies, ingestion, admin
 
 # Initialize logging and settings
 configure_logging()
@@ -23,6 +27,10 @@ app = FastAPI(
     description="Multi-agent SEC fraud detection system",
     version="1.0.0"
 )
+
+# Rate Limiting Configuration
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 app.add_middleware(
@@ -36,9 +44,11 @@ app.add_middleware(
 # Include Routers
 # NOTE: ingestion router must be registered before companies router because
 # companies has a catch-all /{cik} path that would intercept /check, /add, /ingestions.
+app.include_router(auth.router)
 app.include_router(ingestion.router)
 app.include_router(companies.router)
 app.include_router(audits.router)
+app.include_router(admin.router)
 
 @app.on_event("startup")
 async def startup_event():

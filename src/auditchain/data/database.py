@@ -9,11 +9,12 @@ For high-throughput scenarios (many concurrent agent runs) we can
 swap to async sessions later without changing the repository layer.
 """
 
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, Generator
+from contextlib import asynccontextmanager, contextmanager
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from auditchain.core.config import get_settings
@@ -46,7 +47,26 @@ def _build_engine() -> Engine:
 
 engine: Engine = _build_engine()
 
+
+def _build_async_engine() -> AsyncEngine:
+    """Create the SQLAlchemy async engine."""
+    settings = get_settings()
+    return create_async_engine(
+        settings.database_url,
+        echo=False,
+        pool_pre_ping=True,
+    )
+
+
+async_engine: AsyncEngine = _build_async_engine()
+
 SessionFactory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+AsyncSessionFactory = async_sessionmaker(
+    bind=async_engine, 
+    autoflush=False, 
+    expire_on_commit=False,
+    class_=AsyncSession
+)
 
 
 @contextmanager
@@ -68,3 +88,17 @@ def get_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session that auto-commits on success."""
+    async with AsyncSessionFactory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("database_async_session_rollback")
+            raise
+        finally:
+            await session.close()
