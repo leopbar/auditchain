@@ -1,16 +1,14 @@
-"""Script to create the initial admin user.
+"""Script to create or update the initial admin user.
 """
+import argparse
 from auditchain.data.database import get_session
 from auditchain.auth.models import UserORM
 from passlib.context import CryptContext
 
-# Use pbkdf2_sha256 to avoid bcrypt 72-char bug in some environments
+# Use pbkdf2_sha256 for consistent hashing across environments
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-def create_admin():
-    email = "admin@auditchain.com"
-    password = "AuditChainSecure2026!"
-    
+def create_admin(email, password):
     with get_session() as session:
         # Check if user exists
         user = session.query(UserORM).filter(UserORM.email == email).first()
@@ -18,6 +16,7 @@ def create_admin():
             print(f"User {email} already exists. Updating password...")
             user.hashed_password = pwd_context.hash(password)
             session.commit()
+            print("Password updated successfully.")
             return
             
         user = UserORM(
@@ -28,7 +27,13 @@ def create_admin():
             role="admin"
         )
         session.add(user)
+        session.commit()
         print(f"Admin user {email} created successfully.")
 
 if __name__ == "__main__":
-    create_admin()
+    parser = argparse.ArgumentParser(description="Create or update an admin user.")
+    parser.add_argument("--email", default="admin@auditchain.com", help="Admin email")
+    parser.add_argument("--password", default="AuditChainSecure2026!", help="Admin password")
+    
+    args = parser.parse_args()
+    create_admin(args.email, args.password)
