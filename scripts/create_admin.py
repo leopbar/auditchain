@@ -23,7 +23,7 @@ def create_admin():
             full_name="System Administrator",
             hashed_password=pwd_context.hash(password),
             is_active=True,
-            is_admin=True
+            role="admin"
         )
         session.add(user)
         print(f"Admin user {email} created successfully.")
