@@ -26,7 +26,7 @@ export class AuditStreamClient {
     }
     
     const url = `${API_BASE_URL}/api/audits/${this.runId}/stream`;
-    this.eventSource = new EventSource(url);
+    this.eventSource = new EventSource(url, { withCredentials: true });
     
     this.eventSource.onopen = () => {
       this.handlers.onOpen?.();

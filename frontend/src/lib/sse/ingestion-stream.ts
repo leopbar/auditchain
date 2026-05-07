@@ -26,7 +26,7 @@ export class IngestionStreamClient {
     }
 
     const url = `${API_BASE_URL}/api/companies/add/${this.ingestionId}/stream`;
-    this.eventSource = new EventSource(url);
+    this.eventSource = new EventSource(url, { withCredentials: true });
 
     this.eventSource.onopen = () => {
       this.handlers.onOpen?.();

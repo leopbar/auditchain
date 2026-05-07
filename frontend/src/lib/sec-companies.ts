@@ -19,7 +19,9 @@ export async function fetchSecCompanies(): Promise<SecCompany[]> {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/companies/sec-directory`);
+    const response = await fetch(`${API_BASE_URL}/api/companies/sec-directory`, {
+      credentials: "include",
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to fetch SEC companies: ${response.statusText}`);
