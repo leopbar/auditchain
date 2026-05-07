@@ -9,7 +9,7 @@ from passlib.context import CryptContext
 from auditchain.auth.config import get_auth_settings
 
 # Setup password context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 auth_settings = get_auth_settings()
 
 

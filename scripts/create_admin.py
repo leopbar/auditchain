@@ -4,7 +4,8 @@ from auditchain.data.database import get_session
 from auditchain.auth.models import UserORM
 from passlib.context import CryptContext
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 to avoid bcrypt 72-char bug in some environments
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def create_admin():
     email = "admin@auditchain.com"
