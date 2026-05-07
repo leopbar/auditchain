@@ -39,7 +39,7 @@ from auditchain.api.events.ingestion_schemas import (
     IngestionCompletedEvent,
     IngestionFailedEvent,
 )
-from scripts.download_filings import SECClient, download_company
+from auditchain.utils.sec_client import SECClient, download_company
 
 logger = get_logger(__name__)
 
