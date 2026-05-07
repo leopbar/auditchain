@@ -1,0 +1,26 @@
+name: AuditChain Deployment
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: 72.62.96.223
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            mkdir -p /opt/auditchain
+            cd /opt/auditchain
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/leopbar/auditchain.git .
+            else
+              git pull origin main
+            fi
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f
