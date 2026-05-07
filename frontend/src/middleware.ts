@@ -28,7 +28,9 @@ export async function middleware(request: NextRequest) {
   if (!accessToken) {
     // Attempt to refresh the token via backend
     try {
-      const refreshResponse = await fetch('http://localhost:8000/auth/refresh', {
+      // In production Docker, the backend is reachable via internal service name
+      const backendUrl = process.env.INTERNAL_API_URL || 'http://localhost:8000';
+      const refreshResponse = await fetch(`${backendUrl}/auth/refresh`, {
         method: 'POST',
         headers: {
           'Cookie': request.headers.get('cookie') || '',

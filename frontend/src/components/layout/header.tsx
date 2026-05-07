@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ShieldCheck, Users, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { API_BASE_URL } from "@/lib/api/client"
 
 /**
  * Global application header.
@@ -20,7 +21,7 @@ export function Header() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const response = await fetch("http://localhost:8000/auth/me", {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
           credentials: "include",
         })
         if (response.ok) {
@@ -38,7 +39,7 @@ export function Header() {
   // Handle session termination
   const handleLogout = async () => {
     try {
-      const response = await fetch("http://localhost:8000/auth/logout", {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
         method: "POST",
         credentials: "include",
       })

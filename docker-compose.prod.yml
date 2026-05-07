@@ -41,6 +41,8 @@ services:
     restart: always
     depends_on:
       - backend
+    environment:
+      - INTERNAL_API_URL=http://auditchain-backend:8000
     ports:
       - "3002:3000"
 

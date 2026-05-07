@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { UserTable } from "@/components/auth/user-table"
 import { Button } from "@/components/ui/button"
+import { API_BASE_URL } from "@/lib/api/client"
 import {
   Dialog,
   DialogContent,
@@ -48,7 +49,7 @@ export default function UserManagementPage() {
   // Fetch the user list from the backend
   async function fetchUsers() {
     try {
-      const response = await fetch("http://localhost:8000/api/admin/users", {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users`, {
         credentials: "include",
       })
       if (response.ok) {
@@ -73,7 +74,7 @@ export default function UserManagementPage() {
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault()
     try {
-      const response = await fetch("http://localhost:8000/api/admin/users", {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -97,7 +98,7 @@ export default function UserManagementPage() {
   // Handle user deactivation
   async function handleDeactivate(id: string) {
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${id}/deactivate`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${id}/deactivate`, {
         method: "DELETE",
         credentials: "include",
       })
@@ -117,7 +118,7 @@ export default function UserManagementPage() {
     if (!window.confirm("Are you sure you want to permanently delete this user? This action cannot be undone.")) return
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: "DELETE",
         credentials: "include",
       })

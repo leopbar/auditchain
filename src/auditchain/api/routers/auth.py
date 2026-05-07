@@ -56,14 +56,14 @@ async def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        samesite="strict",
+        samesite="lax",
         secure=is_prod,
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="strict",
+        samesite="lax",
         secure=is_prod,
     )
 
@@ -107,7 +107,7 @@ async def refresh(
         key="access_token",
         value=new_access_token,
         httponly=True,
-        samesite="strict",
+        samesite="lax",
         secure=is_prod,
     )
 

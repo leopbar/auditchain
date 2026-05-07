@@ -55,7 +55,7 @@ export default async function HomePage() {
               Dashboard sync failed: {error}
             </p>
             <p className="text-xs text-red-600 mt-2">
-              Make sure the back-end API is running at http://localhost:8000
+              Make sure the back-end API is running and accessible
             </p>
           </div>
         )}

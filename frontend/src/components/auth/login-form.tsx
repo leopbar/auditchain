@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { API_BASE_URL } from "@/lib/api/client"
 
 export function LoginForm() {
   const router = useRouter()
@@ -22,7 +23,7 @@ export function LoginForm() {
     setError(null)
 
     try {
-      const response = await fetch("http://localhost:8000/auth/login", {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
