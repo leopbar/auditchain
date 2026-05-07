@@ -13,9 +13,11 @@ def create_admin():
     
     with get_session() as session:
         # Check if user exists
-        existing = session.query(UserORM).filter(UserORM.email == email).first()
-        if existing:
-            print(f"User {email} already exists.")
+        user = session.query(UserORM).filter(UserORM.email == email).first()
+        if user:
+            print(f"User {email} already exists. Updating password...")
+            user.hashed_password = pwd_context.hash(password)
+            session.commit()
             return
             
         user = UserORM(
