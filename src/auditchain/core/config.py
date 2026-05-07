@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Models
     llm_fast_model: str = "gpt-4o-mini"
-    llm_smart_model: str = "claude-3-5-sonnet-20241022"
+    llm_smart_model: str = "gpt-4o"
     llm_embedding_model: str = "text-embedding-3-small"
 
     # SEC EDGAR
