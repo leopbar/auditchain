@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { ShieldCheck, Users, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { API_BASE_URL } from "@/lib/api/client"
+import { useInactivityLogout } from "@/hooks/use-inactivity-logout"
 
 /**
  * Global application header.
@@ -16,6 +17,24 @@ export function Header() {
   const router = useRouter()
   const [isAdmin, setIsAdmin] = useState(false)
   const [user, setUser] = useState<{ email: string; full_name: string | null } | null>(null)
+
+  // Handle session termination (defined before useInactivityLogout so it can be passed in)
+  const handleLogout = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (response.ok) {
+        router.push("/login")
+        router.refresh()
+      }
+    } catch (e) {
+      console.error("Logout error:", e)
+    }
+  }
+
+  useInactivityLogout(handleLogout)
 
   // Check user session and role on mount
   useEffect(() => {
@@ -35,22 +54,6 @@ export function Header() {
     }
     checkAuth()
   }, [])
-
-  // Handle session termination
-  const handleLogout = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      })
-      if (response.ok) {
-        router.push("/login")
-        router.refresh() // Ensure server-side cookies are cleared in the cache
-      }
-    } catch (e) {
-      console.error("Logout error:", e)
-    }
-  }
 
   return (
     <header className="border-b border-neutral-200 bg-white sticky top-0 z-40 dark:bg-neutral-950 dark:border-neutral-800">
