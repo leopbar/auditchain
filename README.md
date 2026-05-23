@@ -13,7 +13,7 @@
 
 ## 🌐 Live App
 The production version of AuditChain is live at:
-**[https://audit-bigfour.duckdns.org](https://audit-bigfour.duckdns.org)**
+**[https://audit.lbai.dev](https://audit.lbai.dev)**
 
 > [!IMPORTANT]
 > **Want to test the platform?**  
