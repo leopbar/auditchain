@@ -84,5 +84,6 @@ package.json
 package-lock.json
 npm-debug.log*
 
-# Generated documentation scripts
+# Generated documentation scripts and artifacts
 generate_doc.js
+*.docx
