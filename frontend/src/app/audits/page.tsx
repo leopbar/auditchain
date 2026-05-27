@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/header";
-import { listAudits } from "@/lib/api/client";
+import { listAudits, ApiError } from "@/lib/api/client";
 import { AuditHistoryList } from "@/components/audit-history/audit-history-list";
 import Link from "next/link";
 import { ChevronLeft, History } from "lucide-react";
@@ -7,7 +8,16 @@ import { ChevronLeft, History } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function AuditHistoryPage() {
-  const { audits } = await listAudits();
+  let audits: Awaited<ReturnType<typeof listAudits>>["audits"] = [];
+  try {
+    const res = await listAudits();
+    audits = res.audits;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      redirect('/login');
+    }
+    throw err;
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
