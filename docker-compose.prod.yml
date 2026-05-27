@@ -36,7 +36,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=https://audit-bigfour.duckdns.org
+        - NEXT_PUBLIC_API_URL=https://audit.lbai.dev
     container_name: auditchain-frontend
     restart: always
     depends_on:
@@ -48,3 +48,4 @@ services:
 
 volumes:
   auditchain_db_data:
+
