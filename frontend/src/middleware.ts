@@ -14,9 +14,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const accessToken = request.cookies.get('access_token')?.value;
 
-  // 1. Redirect to / if already logged in and trying to access /login
+  // 1. Redirect to / if already logged in (with valid token) and trying to access /login
   if (pathname === '/login' && accessToken) {
-    return NextResponse.redirect(new URL('/', request.url));
+    const payload = decodeJwt(accessToken);
+    const isExpired = !payload || (payload.exp && payload.exp * 1000 < Date.now());
+    if (!isExpired) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
   }
 
   // Allow /login to pass through
@@ -41,9 +45,26 @@ export async function middleware(request: NextRequest) {
       });
 
       if (refreshResponse.ok) {
-        const next = NextResponse.next();
-        // Forward the new access_token cookie set by the backend to the browser
         const setCookie = refreshResponse.headers.get('set-cookie');
+
+        // Inject the new access_token into the request headers so server
+        // components receive the refreshed token during this same render cycle
+        const requestHeaders = new Headers(request.headers);
+        if (setCookie) {
+          const newToken = setCookie.match(/access_token=([^;]+)/)?.[1];
+          if (newToken) {
+            const existing = request.headers.get('cookie') || '';
+            const updated = existing
+              .split('; ')
+              .filter(c => !c.startsWith('access_token='))
+              .concat(`access_token=${newToken}`)
+              .join('; ');
+            requestHeaders.set('cookie', updated);
+          }
+        }
+
+        const next = NextResponse.next({ request: { headers: requestHeaders } });
+        // Also forward the Set-Cookie to the browser for subsequent requests
         if (setCookie) {
           next.headers.set('set-cookie', setCookie);
         }
