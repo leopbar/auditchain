@@ -24,8 +24,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Check if user is authenticated
-  if (!accessToken) {
+  // 2. Check if user is authenticated (token missing or expired)
+  const tokenPayload = accessToken ? decodeJwt(accessToken) : null;
+  const tokenExpired = !tokenPayload || (tokenPayload.exp && tokenPayload.exp * 1000 < Date.now());
+
+  if (!accessToken || tokenExpired) {
     // Attempt to refresh the token via backend
     try {
       // In production Docker, the backend is reachable via internal service name
@@ -38,15 +41,19 @@ export async function middleware(request: NextRequest) {
       });
 
       if (refreshResponse.ok) {
-        // Refresh was successful, let the request proceed 
-        // Note: The backend refresh endpoint sets the new access_token cookie in the response
-        return NextResponse.next();
+        const next = NextResponse.next();
+        // Forward the new access_token cookie set by the backend to the browser
+        const setCookie = refreshResponse.headers.get('set-cookie');
+        if (setCookie) {
+          next.headers.set('set-cookie', setCookie);
+        }
+        return next;
       }
     } catch (error) {
       console.error('Middleware refresh failed:', error);
     }
 
-    // If refresh fails or token is missing, redirect to login
+    // If refresh fails or token is missing/expired, redirect to login
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

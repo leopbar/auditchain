@@ -1,6 +1,7 @@
+import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { CompaniesGrid } from "@/components/audit/companies-grid";
-import { listCompanies, listAudits } from "@/lib/api/client";
+import { listCompanies, listAudits, ApiError } from "@/lib/api/client";
 import { DashboardSection } from "@/components/dashboard/dashboard-section";
 import type { Company, AuditSummary } from "@/types/audit";
 
@@ -27,6 +28,9 @@ export default async function HomePage() {
     companies = companiesRes.companies;
     audits = auditsRes.audits;
   } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      redirect('/login');
+    }
     console.error("Failed to fetch dashboard data:", err);
     error = err instanceof Error ? err.message : "Failed to load dashboard data";
   }
