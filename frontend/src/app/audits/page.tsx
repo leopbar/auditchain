@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { Header } from "@/components/layout/header";
 import { listAudits, ApiError } from "@/lib/api/client";
 import { AuditHistoryList } from "@/components/audit-history/audit-history-list";
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function AuditHistoryPage() {
   let audits: Awaited<ReturnType<typeof listAudits>>["audits"] = [];
   try {
-    const res = await listAudits();
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore.toString();
+    const res = await listAudits({}, { headers: { Cookie: cookieHeader } });
     audits = res.audits;
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
