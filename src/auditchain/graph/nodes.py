@@ -35,6 +35,7 @@ from auditchain.agents.supervisor import (
     determine_conclusion,
 )
 from auditchain.core.logging import get_logger
+from auditchain.graph.cost import summarize_usage
 from auditchain.graph.state import AuditState
 from auditchain.schemas.enums import AuditPhase, AuditConclusion
 from auditchain.schemas.reports import AuditReport
@@ -128,8 +129,8 @@ def collector_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    # Approximate cost for GPT-4o
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    # Cost priced per-model from the model that actually produced each message.
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -212,7 +213,7 @@ def reconciler_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -294,7 +295,7 @@ def quant_analyst_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -392,7 +393,7 @@ def investigator_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -536,7 +537,7 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
             tokens_out += msg.usage_metadata.get("output_tokens", 0)
             
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)

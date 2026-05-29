@@ -109,10 +109,11 @@ RECOMMENDATIONS:
 ...
 """
 
-def build_supervisor_agent(model_name: str = "gpt-4o"):
-    """Builds and returns the Supervisor Agent (GPT-4o)."""
+def build_supervisor_agent(model_name: str | None = None):
+    """Builds and returns the Supervisor Agent (uses the configured smart model)."""
+    model = model_name or settings.llm_smart_model
     llm = ChatOpenAI(
-        model=model_name,
+        model=model,
         temperature=0,
         api_key=settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
     )
@@ -124,5 +125,5 @@ def build_supervisor_agent(model_name: str = "gpt-4o"):
         prompt=SUPERVISOR_SYSTEM_PROMPT
     )
     
-    logger.info("supervisor_agent_built", model=model_name)
+    logger.info("supervisor_agent_built", model=model)
     return agent
