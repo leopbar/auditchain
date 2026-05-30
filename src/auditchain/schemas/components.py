@@ -75,6 +75,10 @@ class FinancialPeriod(BaseModel):
     cash_from_investing: float | None = Field(None, description="Net Cash Provided by (Used in) Investing Activities")
     cash_from_financing: float | None = Field(None, description="Net Cash Provided by (Used in) Financing Activities")
 
+    # Data completeness — populated by get_financial_summary
+    indicators_found: int = Field(0, description="Number of financial indicators successfully retrieved (max 17)")
+    critical_missing: list[str] = Field(default_factory=list, description="Names of indicators that were not found in this filing")
+
 
 class CheckResult(BaseModel):
     """Result of a single validation check. Used inside reports to enumerate what was tested."""

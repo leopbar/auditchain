@@ -331,12 +331,15 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
             # aggregate Liabilities, or NCI-adjusted equity) by composition.
             _derive_balance_sheet_aggregates(session, filing_id, values, provenance)
 
-            found_count = sum(1 for v in values.values() if v is not None)
+            critical_missing = [k for k, v in values.items() if v is None]
+            found_count = len(values) - len(critical_missing)
 
             logger.info(
                 "tool_get_financial_summary_success",
                 filing_id=filing_id,
                 indicators_found=found_count,
+                indicators_total=len(values),
+                critical_missing=critical_missing,
             )
             logger.info(
                 "financial_summary_provenance",
@@ -348,6 +351,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 filing_id=filing.id,
                 fiscal_year=filing.fiscal_year,
                 period_end=filing.period_of_report,
+                indicators_found=found_count,
+                critical_missing=critical_missing,
                 **values,
             )
     except Exception as e:

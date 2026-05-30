@@ -23,8 +23,9 @@ def compute_beneish_mscore_simplified(current: FinancialPeriod, prior: Financial
     if not all([current.revenue, prior.revenue, current.total_assets, prior.total_assets]):
         return CheckResult(
             name="beneish_mscore",
-            passed=True,
-            notes="Insufficient data for Beneish calculation (requires Revenue and Total Assets for both periods)."
+            passed=False,
+            status="inconclusive",
+            notes="Inconclusive: Beneish M-Score requires Revenue and Total Assets for both periods — one or more fields are missing."
         )
 
     computed_count = 0
@@ -114,8 +115,9 @@ def compute_altman_zscore_simplified(period: FinancialPeriod) -> CheckResult:
     if not period.total_assets or period.total_assets == 0:
         return CheckResult(
             name="altman_zscore",
-            passed=True,
-            notes="Insufficient data for Altman calculation (Total Assets required)."
+            passed=False,
+            status="inconclusive",
+            notes="Inconclusive: Altman Z-Score requires Total Assets — field is missing or zero."
         )
 
     ta = period.total_assets
@@ -192,8 +194,9 @@ def compute_accruals_ratio(period: FinancialPeriod) -> CheckResult:
     if not all([period.net_income, period.cash_from_operations, period.total_assets]):
         return CheckResult(
             name="quant_accruals_ratio",
-            passed=True,
-            notes="Insufficient data for accruals ratio calculation."
+            passed=False,
+            status="inconclusive",
+            notes="Inconclusive: accruals ratio requires net_income, cash_from_operations, and total_assets — one or more fields are missing."
         )
 
     accruals_val = (period.net_income - period.cash_from_operations) / period.total_assets

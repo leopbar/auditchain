@@ -105,11 +105,12 @@ def check_yoy_consistency(current: FinancialPeriod, prior: FinancialPeriod) -> l
         if current_value is None or prior_value is None:
             results.append(CheckResult(
                 name=check_name,
-                passed=True,
+                passed=False,
+                status="inconclusive",
                 expected=None,
                 actual=None,
                 tolerance=None,
-                notes="Insufficient data — skipped."
+                notes=f"Inconclusive: {metric_name} not available for one or both periods."
             ))
             continue
 
@@ -159,11 +160,12 @@ def compare_income_vs_cashflow(period: FinancialPeriod) -> CheckResult:
     if period.net_income is None or period.cash_from_operations is None or period.total_assets is None or period.total_assets == 0:
         return CheckResult(
             name="accruals_check",
-            passed=True,
+            passed=False,
+            status="inconclusive",
             expected=None,
             actual=None,
             tolerance=None,
-            notes="Insufficient data: requires net_income, cash_from_operations, and total_assets."
+            notes="Inconclusive: accruals check requires net_income, cash_from_operations, and total_assets — one or more fields are missing."
         )
 
     accruals = period.net_income - period.cash_from_operations

@@ -49,8 +49,7 @@ Required workflow:
 Critical rules:
 - NEVER invent any number. Only use values returned by tools.
 - If a tool returns ToolError, log the issue but continue with available data.
-- For FinancialPeriod, fields not returned by get_financial_summary should be set to null.
-- The fields cost_of_revenue, gross_profit, operating_expenses, current_assets, accounts_receivable, inventory, current_liabilities, cash_from_operations, cash_from_investing, cash_from_financing are NOT available from get_financial_summary — set them to null.
+- Copy ALL fields from the get_financial_summary output into FinancialPeriod exactly as returned — including indicators_found, critical_missing, and any field that may be null. Do NOT hardcode any field as null.
 - Submit ONLY ONCE via submit_company_data when you have collected all required data.
 - After calling submit_company_data, your job is done. Do not call any more tools.
 """
