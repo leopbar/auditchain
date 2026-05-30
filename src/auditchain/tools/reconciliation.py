@@ -24,21 +24,37 @@ def check_accounting_equation(period: FinancialPeriod) -> CheckResult:
     """Verifies the fundamental accounting equation: Total Assets = Total Liabilities + Stockholders' Equity. 
     
     Returns a CheckResult indicating whether the equation balances within tolerance (0.1% of total assets). 
-    Use this tool to validate any FinancialPeriod where total_assets, total_liabilities, 
-    and stockholders_equity are all reported. 
-    If any of those three are None, the check cannot run and you should not call this tool for that period.
+    Use this tool to validate any FinancialPeriod. If total_assets, total_liabilities,
+    or stockholders_equity is missing (None), the check returns status="inconclusive"
+    (NOT a failure) and names the missing field(s) — it is not a fraud signal.
     """
     logger.info("check_accounting_equation_called", filing_id=period.filing_id)
 
-    # Check for required data
-    if period.total_assets is None or period.total_liabilities is None or period.stockholders_equity is None:
+    # Identify any missing inputs by their human-readable names. Missing data is
+    # INCONCLUSIVE (the check could not run), NOT a failure. Downstream logic
+    # relies on status="inconclusive" to avoid forcing an ADVERSE conclusion
+    # just because a field could not be read from the filing.
+    missing = [
+        label
+        for label, value in (
+            ("Total Assets", period.total_assets),
+            ("Total Liabilities", period.total_liabilities),
+            ("Stockholders' Equity", period.stockholders_equity),
+        )
+        if value is None
+    ]
+    if missing:
         return CheckResult(
             name="accounting_equation",
             passed=False,
+            status="inconclusive",
             expected=None,
             actual=None,
             tolerance=None,
-            notes="Insufficient data: total_assets, total_liabilities, or stockholders_equity is None."
+            notes=(
+                "Inconclusive: could not verify the accounting equation because the "
+                f"following field(s) were not found in this filing: {', '.join(missing)}."
+            ),
         )
 
     expected = period.total_liabilities + period.stockholders_equity
@@ -55,6 +71,7 @@ def check_accounting_equation(period: FinancialPeriod) -> CheckResult:
     return CheckResult(
         name="accounting_equation",
         passed=passed,
+        status="passed" if passed else "failed",
         expected=expected,
         actual=actual,
         tolerance=tolerance,

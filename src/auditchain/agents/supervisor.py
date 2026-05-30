@@ -60,9 +60,15 @@ def calculate_risk_score(red_flags: List[RedFlag]) -> Tuple[float, RiskLevel]:
         
     return final_score, level
 
-def determine_conclusion(risk_score: float, reconciliation_passed: bool) -> AuditConclusion:
-    """Determines the final audit conclusion based on risk and data integrity."""
-    if risk_score > 75 or not reconciliation_passed:
+def determine_conclusion(risk_score: float, integrity_failed: bool = False) -> AuditConclusion:
+    """Determines the final audit conclusion based on risk and data integrity.
+
+    ``integrity_failed`` must be True ONLY for a genuine accounting-integrity
+    failure (figures present but the balance sheet does not balance), never for
+    an inconclusive check caused by missing/unreadable data. Missing data must
+    not, by itself, produce an ADVERSE conclusion.
+    """
+    if risk_score > 75 or integrity_failed:
         return AuditConclusion.ADVERSE
     
     if risk_score > 20:

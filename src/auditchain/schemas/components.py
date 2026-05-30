@@ -5,7 +5,9 @@ This module defines compound elements like RedFlags, Evidence, and FinancialPeri
 """
 
 from datetime import date, datetime
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from auditchain.schemas.enums import FlagSeverity, FlagCategory
 
 
@@ -81,10 +83,29 @@ class CheckResult(BaseModel):
 
     name: str = Field(description="The name of the check, e.g., 'accounting_equation'")
     passed: bool = Field(description="Whether the check passed successfully")
+    status: Literal["passed", "failed", "inconclusive"] | None = Field(
+        None,
+        description=(
+            "Tri-state outcome. 'inconclusive' means the check could not run "
+            "(e.g. missing data) and must NOT be treated as a genuine failure. "
+            "Defaults from `passed` when not provided."
+        ),
+    )
     expected: float | None = Field(None, description="The expected value for the check")
     actual: float | None = Field(None, description="The actual value found")
     tolerance: float | None = Field(None, description="The allowed margin of error")
     notes: str | None = Field(None, description="Additional context or failure reasons")
+
+    @model_validator(mode="after")
+    def _default_status_from_passed(self) -> "CheckResult":
+        """Keep `status` and `passed` consistent for back-compat.
+
+        Older code constructs CheckResult with only `passed`; derive `status`
+        from it. An explicit 'inconclusive' is preserved and is not a failure.
+        """
+        if self.status is None:
+            self.status = "passed" if self.passed else "failed"
+        return self
 
 
 class AgentStepMetrics(BaseModel):

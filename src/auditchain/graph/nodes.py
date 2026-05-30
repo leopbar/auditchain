@@ -435,9 +435,16 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
     # 1. Calculate Risk Score and Level
     risk_score, risk_level = calculate_risk_score(state["red_flags"])
     
-    # 2. Determine Conclusion
-    rec_passed = state["reconciliation"].passed if state.get("reconciliation") else True
-    conclusion = determine_conclusion(risk_score, rec_passed)
+    # 2. Determine Conclusion.
+    # Only a GENUINE integrity failure (a check with status="failed") may force
+    # ADVERSE — an inconclusive check (missing/unreadable data) must not. Derived
+    # deterministically from the checks, not from the LLM-decided report.passed.
+    reconciliation = state.get("reconciliation")
+    integrity_failed = bool(
+        reconciliation
+        and any(getattr(c, "status", None) == "failed" for c in reconciliation.checks)
+    )
+    conclusion = determine_conclusion(risk_score, integrity_failed)
 
     # 3. Build context for Supervisor LLM
     cd = state["company_data"]

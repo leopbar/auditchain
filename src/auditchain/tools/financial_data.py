@@ -142,8 +142,13 @@ def list_filings(
 
 def _get_value_for_concept(
     session, filing_id: int, concept_names: list[str]
-) -> float | None:
-    """Internal helper to fetch the latest value for a set of possible XBRL concepts."""
+) -> tuple[float | None, str | None]:
+    """Fetch the latest value for the first matching XBRL concept.
+
+    Returns a ``(value, matched_concept)`` tuple so callers can record which
+    alias actually resolved (provenance). Returns ``(None, None)`` when no
+    concept in ``concept_names`` matches.
+    """
     for concept in concept_names:
         stmt = (
             select(FinancialLineItemORM.value)
@@ -156,8 +161,88 @@ def _get_value_for_concept(
         )
         val = session.execute(stmt).scalar_one_or_none()
         if val is not None:
-            return float(val)
-    return None
+            return float(val), concept
+    return None, None
+
+
+def _derive_balance_sheet_aggregates(
+    session,
+    filing_id: int,
+    values: dict[str, float | None],
+    provenance: dict[str, str],
+) -> None:
+    """Fill in ``total_liabilities`` / ``stockholders_equity`` when not tagged directly.
+
+    Mutates ``values`` and ``provenance`` in place. Direct lookups must already
+    have run, so reported values are never overwritten. Derivation by composition:
+      - ``Liabilities = LiabilitiesCurrent + LiabilitiesNoncurrent``
+      - ``Equity(total) = StockholdersEquity (parent) + MinorityInterest (NCI)``
+      - Last resort, via the identity ``LiabilitiesAndStockholdersEquity = Assets``:
+          ``Liabilities = LiabilitiesAndStockholdersEquity - Equity`` and
+          ``Equity = LiabilitiesAndStockholdersEquity - Liabilities``.
+
+    For the accounting equation to balance against total assets, equity must be
+    the TOTAL including noncontrolling interest (NCI) — hence parent + NCI.
+    """
+    # total_liabilities from the current + noncurrent pieces
+    if values.get("total_liabilities") is None:
+        current = values.get("current_liabilities")
+        noncurrent, _ = _get_value_for_concept(
+            session, filing_id, ["LiabilitiesNoncurrent"]
+        )
+        if current is not None and noncurrent is not None:
+            values["total_liabilities"] = current + noncurrent
+            provenance["total_liabilities"] = (
+                "derived: LiabilitiesCurrent + LiabilitiesNoncurrent"
+            )
+
+    # stockholders_equity (total, including NCI) from parent + minority interest
+    if values.get("stockholders_equity") is None:
+        parent, _ = _get_value_for_concept(session, filing_id, ["StockholdersEquity"])
+        nci, _ = _get_value_for_concept(session, filing_id, ["MinorityInterest"])
+        if parent is not None:
+            values["stockholders_equity"] = parent + (nci or 0.0)
+            provenance["stockholders_equity"] = (
+                "derived: StockholdersEquity + MinorityInterest"
+                if nci is not None
+                else "alias: StockholdersEquity (no NCI reported)"
+            )
+
+    # Add redeemable NCI (mezzanine item between liabilities and permanent equity).
+    # Some filers (e.g. Tesla) report a "redeemable noncontrolling interest" that
+    # sits outside both Liabilities and the NCI-inclusive equity tag.  It must be
+    # included in the equity side for the accounting equation to balance.
+    redeemable_nci, _ = _get_value_for_concept(
+        session, filing_id, ["RedeemableNoncontrollingInterestEquityCarryingAmount"]
+    )
+    if redeemable_nci is not None and values.get("stockholders_equity") is not None:
+        values["stockholders_equity"] += redeemable_nci
+        provenance["stockholders_equity"] = (
+            provenance.get("stockholders_equity", "direct")
+            + " + RedeemableNoncontrollingInterest"
+        )
+
+    # Last resort: balance-sheet identity (right-hand side total == total assets)
+    total_rhs, _ = _get_value_for_concept(
+        session, filing_id, ["LiabilitiesAndStockholdersEquity"]
+    )
+    if total_rhs is not None:
+        if (
+            values.get("total_liabilities") is None
+            and values.get("stockholders_equity") is not None
+        ):
+            values["total_liabilities"] = total_rhs - values["stockholders_equity"]
+            provenance["total_liabilities"] = (
+                "derived: LiabilitiesAndStockholdersEquity - StockholdersEquity"
+            )
+        if (
+            values.get("stockholders_equity") is None
+            and values.get("total_liabilities") is not None
+        ):
+            values["stockholders_equity"] = total_rhs - values["total_liabilities"]
+            provenance["stockholders_equity"] = (
+                "derived: LiabilitiesAndStockholdersEquity - Liabilities"
+            )
 
 
 @tool
@@ -185,42 +270,71 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                     error=f"No filing found with id {filing_id}", code="filing_not_found"
                 )
 
-            # Mapping of indicators to their possible XBRL concept names
+            # Mapping of indicators to their possible XBRL concept names, in
+            # priority order (first match wins). Multiple aliases guard against
+            # the fact that US-GAAP offers many valid tags for the same concept.
+            # For stockholders_equity the NCI-inclusive variant comes FIRST so the
+            # accounting equation balances against total assets (see reconciler).
             indicators = {
                 "revenue": [
                     "RevenueFromContractWithCustomerExcludingAssessedTax",
+                    "RevenueFromContractWithCustomerIncludingAssessedTax",
                     "Revenues",
+                    "SalesRevenueNet",
                 ],
-                "cost_of_revenue": ["CostOfRevenue", "CostOfGoodsAndServicesSold"],
+                "cost_of_revenue": [
+                    "CostOfRevenue",
+                    "CostOfGoodsAndServicesSold",
+                    "CostOfGoodsSold",
+                ],
                 "gross_profit": ["GrossProfit"],
-                "operating_expenses": ["OperatingExpenses"],
+                "operating_expenses": ["OperatingExpenses", "CostsAndExpenses"],
                 "operating_income": ["OperatingIncomeLoss"],
-                "net_income": ["NetIncomeLoss"],
+                "net_income": ["NetIncomeLoss", "ProfitLoss"],
                 "total_assets": ["Assets"],
                 "current_assets": ["AssetsCurrent"],
-                "accounts_receivable": ["AccountsReceivableNetCurrent"],
-                "inventory": ["InventoryNet"],
+                "accounts_receivable": [
+                    "AccountsReceivableNetCurrent",
+                    "ReceivablesNetCurrent",
+                ],
+                "inventory": ["InventoryNet", "InventoryFinishedGoodsNetOfReserves"],
                 "total_liabilities": ["Liabilities"],
                 "current_liabilities": ["LiabilitiesCurrent"],
-                "stockholders_equity": ["StockholdersEquity"],
-                "cash": ["CashAndCashEquivalentsAtCarryingValue"],
+                "stockholders_equity": [
+                    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+                    "StockholdersEquity",
+                ],
+                "cash": [
+                    "CashAndCashEquivalentsAtCarryingValue",
+                    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+                ],
                 "cash_from_operations": ["NetCashProvidedByUsedInOperatingActivities"],
                 "cash_from_investing": ["NetCashProvidedByUsedInInvestingActivities"],
                 "cash_from_financing": ["NetCashProvidedByUsedInFinancingActivities"],
             }
 
-            values = {}
-            found_count = 0
+            values: dict[str, float | None] = {}
+            provenance: dict[str, str] = {}
             for key, concepts in indicators.items():
-                val = _get_value_for_concept(session, filing_id, concepts)
+                val, matched = _get_value_for_concept(session, filing_id, concepts)
                 values[key] = val
-                if val is not None:
-                    found_count += 1
+                provenance[key] = matched if matched is not None else "not_found"
+
+            # Fill in balance-sheet aggregates that filers often omit (e.g. the
+            # aggregate Liabilities, or NCI-adjusted equity) by composition.
+            _derive_balance_sheet_aggregates(session, filing_id, values, provenance)
+
+            found_count = sum(1 for v in values.values() if v is not None)
 
             logger.info(
                 "tool_get_financial_summary_success",
                 filing_id=filing_id,
                 indicators_found=found_count,
+            )
+            logger.info(
+                "financial_summary_provenance",
+                filing_id=filing_id,
+                provenance=provenance,
             )
 
             return FinancialPeriod(
