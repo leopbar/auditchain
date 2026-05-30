@@ -104,7 +104,7 @@ class FinancialLineItemORM(Base):
 
     __tablename__ = "financial_line_items"
     __table_args__ = (
-        UniqueConstraint("filing_id", "statement", "concept", "period_end"),
+        UniqueConstraint("filing_id", "statement", "concept", "period_end", "frame"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -121,6 +121,7 @@ class FinancialLineItemORM(Base):
     decimals: Mapped[int | None] = mapped_column(Integer)
     period_start: Mapped[date | None] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    frame: Mapped[str] = mapped_column(String(20), nullable=False, default="")
 
     filing: Mapped[FilingORM] = relationship(back_populates="line_items")
 

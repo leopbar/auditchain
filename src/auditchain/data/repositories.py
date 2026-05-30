@@ -159,7 +159,7 @@ class FinancialLineItemRepository:
 
         stmt = pg_insert(FinancialLineItemORM).values(rows_list)
         stmt = stmt.on_conflict_do_update(
-            index_elements=["filing_id", "statement", "concept", "period_end"],
+            index_elements=["filing_id", "statement", "concept", "period_end", "frame"],
             set_={
                 "value": stmt.excluded.value,
                 "label": stmt.excluded.label,

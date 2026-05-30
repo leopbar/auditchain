@@ -207,7 +207,8 @@ class FilingIngestionService:
         deduplicated: dict[tuple, dict] = {}
         for concept_name, fact in fact_values:
             statement = CONCEPT_TO_STATEMENT[concept_name]
-            key = (filing_id, statement, concept_name, fact.end)
+            frame = fact.frame or ""
+            key = (filing_id, statement, concept_name, fact.end, frame)
             deduplicated[key] = {
                 "filing_id": filing_id,
                 "statement": statement,
@@ -219,5 +220,6 @@ class FilingIngestionService:
                 "decimals": None,
                 "period_start": fact.start,
                 "period_end": fact.end,
+                "frame": frame,
             }
         return list(deduplicated.values())

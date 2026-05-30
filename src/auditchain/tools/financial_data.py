@@ -150,7 +150,7 @@ def _get_value_for_concept(
     concept in ``concept_names`` matches.
     """
     for concept in concept_names:
-        stmt = (
+        base = (
             select(FinancialLineItemORM.value)
             .where(
                 FinancialLineItemORM.filing_id == filing_id,
@@ -159,7 +159,14 @@ def _get_value_for_concept(
             .order_by(FinancialLineItemORM.period_end.desc())
             .limit(1)
         )
-        val = session.execute(stmt).scalar_one_or_none()
+        # Prefer the consolidated figure (frame != '' means SEC assigned a standard
+        # calendar-period identifier, which only happens for company-level totals).
+        val = session.execute(base.where(FinancialLineItemORM.frame != "")).scalar_one_or_none()
+        # Fallback: companies with non-December fiscal year-ends (e.g. Apple) have
+        # frame='' even on consolidated facts because the period doesn't align with
+        # a standard calendar year.
+        if val is None:
+            val = session.execute(base).scalar_one_or_none()
         if val is not None:
             return float(val), concept
     return None, None
