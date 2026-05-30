@@ -35,6 +35,7 @@ from auditchain.agents.supervisor import (
     determine_conclusion,
 )
 from auditchain.core.logging import get_logger
+from auditchain.graph.cost import summarize_usage
 from auditchain.graph.state import AuditState
 from auditchain.schemas.enums import AuditPhase, AuditConclusion
 from auditchain.schemas.reports import AuditReport
@@ -128,8 +129,8 @@ def collector_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    # Approximate cost for GPT-4o
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    # Cost priced per-model from the model that actually produced each message.
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -212,7 +213,7 @@ def reconciler_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -294,7 +295,7 @@ def quant_analyst_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -392,7 +393,7 @@ def investigator_node(state: AuditState) -> dict[str, Any]:
             tokens_out += output_tokens
 
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -434,9 +435,16 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
     # 1. Calculate Risk Score and Level
     risk_score, risk_level = calculate_risk_score(state["red_flags"])
     
-    # 2. Determine Conclusion
-    rec_passed = state["reconciliation"].passed if state.get("reconciliation") else True
-    conclusion = determine_conclusion(risk_score, rec_passed)
+    # 2. Determine Conclusion.
+    # Only a GENUINE integrity failure (a check with status="failed") may force
+    # ADVERSE — an inconclusive check (missing/unreadable data) must not. Derived
+    # deterministically from the checks, not from the LLM-decided report.passed.
+    reconciliation = state.get("reconciliation")
+    integrity_failed = bool(
+        reconciliation
+        and any(getattr(c, "status", None) == "failed" for c in reconciliation.checks)
+    )
+    conclusion = determine_conclusion(risk_score, integrity_failed)
 
     # 3. Build context for Supervisor LLM
     cd = state["company_data"]
@@ -536,7 +544,7 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
             tokens_out += msg.usage_metadata.get("output_tokens", 0)
             
     total_tokens = tokens_in + tokens_out
-    total_cost = (tokens_in * 0.0025 / 1000) + (tokens_out * 0.01 / 1000)
+    total_cost = summarize_usage(messages).cost_usd
     
     completed_at = datetime.utcnow()
     latency_ms = int((completed_at - started_at).total_seconds() * 1000)

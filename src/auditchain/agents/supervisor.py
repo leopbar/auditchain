@@ -60,9 +60,15 @@ def calculate_risk_score(red_flags: List[RedFlag]) -> Tuple[float, RiskLevel]:
         
     return final_score, level
 
-def determine_conclusion(risk_score: float, reconciliation_passed: bool) -> AuditConclusion:
-    """Determines the final audit conclusion based on risk and data integrity."""
-    if risk_score > 75 or not reconciliation_passed:
+def determine_conclusion(risk_score: float, integrity_failed: bool = False) -> AuditConclusion:
+    """Determines the final audit conclusion based on risk and data integrity.
+
+    ``integrity_failed`` must be True ONLY for a genuine accounting-integrity
+    failure (figures present but the balance sheet does not balance), never for
+    an inconclusive check caused by missing/unreadable data. Missing data must
+    not, by itself, produce an ADVERSE conclusion.
+    """
+    if risk_score > 75 or integrity_failed:
         return AuditConclusion.ADVERSE
     
     if risk_score > 20:
@@ -109,10 +115,11 @@ RECOMMENDATIONS:
 ...
 """
 
-def build_supervisor_agent(model_name: str = "gpt-4o"):
-    """Builds and returns the Supervisor Agent (GPT-4o)."""
+def build_supervisor_agent(model_name: str | None = None):
+    """Builds and returns the Supervisor Agent (uses the configured smart model)."""
+    model = model_name or settings.llm_smart_model
     llm = ChatOpenAI(
-        model=model_name,
+        model=model,
         temperature=0,
         api_key=settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
     )
@@ -124,5 +131,5 @@ def build_supervisor_agent(model_name: str = "gpt-4o"):
         prompt=SUPERVISOR_SYSTEM_PROMPT
     )
     
-    logger.info("supervisor_agent_built", model=model_name)
+    logger.info("supervisor_agent_built", model=model)
     return agent

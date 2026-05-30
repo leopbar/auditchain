@@ -104,7 +104,7 @@ class FinancialLineItemORM(Base):
 
     __tablename__ = "financial_line_items"
     __table_args__ = (
-        UniqueConstraint("filing_id", "statement", "concept", "period_end"),
+        UniqueConstraint("filing_id", "statement", "concept", "period_end", "frame"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -121,6 +121,7 @@ class FinancialLineItemORM(Base):
     decimals: Mapped[int | None] = mapped_column(Integer)
     period_start: Mapped[date | None] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    frame: Mapped[str] = mapped_column(String(20), nullable=False, default="")
 
     filing: Mapped[FilingORM] = relationship(back_populates="line_items")
 
@@ -246,3 +247,24 @@ class IngestionRunORM(Base):
 
     def __repr__(self) -> str:
         return f"<IngestionRun id={self.id} cik={self.cik} status={self.status}>"
+
+
+class ModelPriceORM(Base):
+    """Per-model LLM pricing in USD per 1 million tokens.
+
+    Editable/refreshable by admins. The cost meter reads from this table so
+    that token counts are priced by the model that actually produced them.
+    """
+
+    __tablename__ = "model_prices"
+
+    model_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    input_cost_per_1m: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    output_cost_per_1m: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    source: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<ModelPrice {self.model_name} in={self.input_cost_per_1m} out={self.output_cost_per_1m}>"

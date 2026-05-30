@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from sqlalchemy import delete, select
 
 from auditchain.core.config import get_settings
 from auditchain.core.logging import get_logger
@@ -356,7 +357,7 @@ async def run_ingestion_with_streaming(
         text_pipeline.ingest_all_for_company(cik)
 
         # Count chunks generated
-        from sqlalchemy import select, func
+        from sqlalchemy import func
         with get_session() as session:
             company_orm = session.execute(
                 select(CompanyORM).where(CompanyORM.cik == cik)
@@ -476,8 +477,6 @@ def _delete_existing_company_data(cik: str) -> dict[str, int]:
 
         # Find audit runs referencing those filings
         if filing_ids:
-            from sqlalchemy import delete
-
             audit_run_ids = [
                 r.id for r in
                 session.execute(
@@ -523,7 +522,6 @@ def _delete_existing_company_data(cik: str) -> dict[str, int]:
             counts["filings"] = result.rowcount
 
         # Delete company
-        from sqlalchemy import delete
         result = session.execute(
             delete(CompanyORM).where(CompanyORM.id == company_id)
         )

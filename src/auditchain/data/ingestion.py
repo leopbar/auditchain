@@ -56,12 +56,23 @@ CONCEPT_TO_STATEMENT: dict[str, str] = {
     "AssetsCurrent": "balance_sheet",
     "Liabilities": "balance_sheet",
     "LiabilitiesCurrent": "balance_sheet",
+    "LiabilitiesNoncurrent": "balance_sheet",
+    "LiabilitiesAndStockholdersEquity": "balance_sheet",
+    # Equity — NCI-inclusive variant stored alongside the parent-only version.
+    # The parser in tools/financial_data.py prefers the NCI-inclusive tag when
+    # both exist, so the accounting equation can balance against total assets.
+    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": "balance_sheet",
     "StockholdersEquity": "balance_sheet",
+    # Noncontrolling interest (NCI / minority interest) — needed so the
+    # composition derivation can compute total equity = parent + NCI.
+    "MinorityInterest": "balance_sheet",
+    "RedeemableNoncontrollingInterestEquityCarryingAmount": "balance_sheet",
     "RetainedEarningsAccumulatedDeficit": "balance_sheet",
     "PropertyPlantAndEquipmentNet": "balance_sheet",
     "LongTermDebt": "balance_sheet",
     "LongTermDebtNoncurrent": "balance_sheet",
     "CashAndCashEquivalentsAtCarryingValue": "balance_sheet",
+    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": "balance_sheet",
     "AccountsReceivableNetCurrent": "balance_sheet",
     "InventoryNet": "balance_sheet",
     # Cash flow
@@ -196,7 +207,8 @@ class FilingIngestionService:
         deduplicated: dict[tuple, dict] = {}
         for concept_name, fact in fact_values:
             statement = CONCEPT_TO_STATEMENT[concept_name]
-            key = (filing_id, statement, concept_name, fact.end)
+            frame = fact.frame or ""
+            key = (filing_id, statement, concept_name, fact.end, frame)
             deduplicated[key] = {
                 "filing_id": filing_id,
                 "statement": statement,
@@ -208,5 +220,6 @@ class FilingIngestionService:
                 "decimals": None,
                 "period_start": fact.start,
                 "period_end": fact.end,
+                "frame": frame,
             }
         return list(deduplicated.values())

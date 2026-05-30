@@ -4,7 +4,7 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ShieldCheck, Users, LogOut } from "lucide-react"
+import { ShieldCheck, Users, LogOut, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { API_BASE_URL } from "@/lib/api/client"
 import { useInactivityLogout } from "@/hooks/use-inactivity-logout"
@@ -70,12 +70,22 @@ export function Header() {
         
         <div className="flex items-center gap-6">
           {isAdmin && (
-            <Link 
-              href="/admin/users" 
+            <Link
+              href="/admin/users"
               className="flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50 transition-colors"
             >
               <Users className="w-4 h-4" />
               User Management
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link
+              href="/admin/pricing"
+              className="flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50 transition-colors"
+            >
+              <DollarSign className="w-4 h-4" />
+              Model Pricing
             </Link>
           )}
 
