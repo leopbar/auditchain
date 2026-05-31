@@ -5,6 +5,8 @@ outputs, and performs the corresponding state updates. Nodes bridge the gap
 between agent intelligence and graph mechanics.
 """
 
+import re
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, AIMessage
@@ -45,6 +47,40 @@ from auditchain.data.database import get_session
 from auditchain.data.audit_repository import AuditRepository
 
 logger = get_logger(__name__)
+
+
+def _invoke_with_retry(agent, payload: dict, config: dict | None = None,
+                       max_retries: int = 3) -> dict:
+    """Invoke a LangGraph agent with automatic retry on OpenAI 429 rate-limit errors.
+
+    Parses the suggested wait time from the error message when available and
+    sleeps at least that long before retrying. Falls back to exponential backoff
+    (4s → 8s → 16s) when no wait time is embedded in the error.
+    """
+    attempt = 0
+    last_exc: Exception | None = None
+    while attempt <= max_retries:
+        try:
+            return agent.invoke(payload, **({"config": config} if config else {}))
+        except Exception as exc:
+            error_str = str(exc)
+            if "rate_limit_exceeded" not in error_str and "429" not in error_str:
+                raise  # non-rate-limit errors propagate immediately
+            last_exc = exc
+            # Try to parse the suggested wait time from the OpenAI error message
+            match = re.search(r"try again in ([0-9.]+)s", error_str)
+            suggested = float(match.group(1)) if match else 0.0
+            wait = max(suggested + 0.5, 2 ** (attempt + 2))  # at least 4s on first retry
+            logger.warning(
+                "agent_invoke_rate_limited",
+                attempt=attempt + 1,
+                wait_seconds=round(wait, 1),
+                error=error_str[:120],
+            )
+            time.sleep(wait)
+            attempt += 1
+    raise last_exc  # type: ignore[misc]
+
 
 # Lazy initialization of agents
 _collector_agent = None
@@ -103,8 +139,7 @@ def collector_node(state: AuditState) -> dict[str, Any]:
     )
 
     agent = _get_collector_agent()
-    # We invoke the agent with the user prompt
-    response = agent.invoke({"messages": [HumanMessage(content=user_prompt)]})
+    response = _invoke_with_retry(agent, {"messages": [HumanMessage(content=user_prompt)]})
     messages = response.get("messages", [])
     
     company_data = extract_company_data_from_messages(messages)
@@ -189,7 +224,7 @@ def reconciler_node(state: AuditState) -> dict[str, Any]:
     )
 
     agent = _get_reconciler_agent()
-    response = agent.invoke({"messages": [HumanMessage(content=user_prompt)]})
+    response = _invoke_with_retry(agent, {"messages": [HumanMessage(content=user_prompt)]})
     messages = response.get("messages", [])
 
     report = extract_reconciliation_from_messages(messages)
@@ -271,7 +306,7 @@ def quant_analyst_node(state: AuditState) -> dict[str, Any]:
     )
 
     agent = _get_quant_agent()
-    response = agent.invoke({"messages": [HumanMessage(content=user_prompt)]})
+    response = _invoke_with_retry(agent, {"messages": [HumanMessage(content=user_prompt)]})
     messages = response.get("messages", [])
 
     report = extract_quant_analysis_from_messages(messages)
@@ -545,7 +580,7 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
     )
 
     agent = _get_supervisor_agent()
-    response = agent.invoke({"messages": [HumanMessage(content=user_prompt)]})
+    response = _invoke_with_retry(agent, {"messages": [HumanMessage(content=user_prompt)]})
     messages = response.get("messages", [])
     
     # Extract text from the last AIMessage
