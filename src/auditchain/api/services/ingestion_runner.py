@@ -131,6 +131,8 @@ async def run_ingestion_with_streaming(
         company_name = submissions.get("name", "Unknown")
         tickers_list = submissions.get("tickers", [])
         company_ticker = tickers_list[0] if tickers_list else None
+        company_sic = submissions.get("sic")
+        company_industry = submissions.get("sicDescription")
 
         # Verify at least one 10-K exists
         recent_forms = submissions.get("filings", {}).get("recent", {}).get("form", [])
@@ -312,6 +314,16 @@ async def run_ingestion_with_streaming(
         # Reuse FilingIngestionService from src/auditchain/data/ingestion.py
         ingestion_service = FilingIngestionService()
         result = ingestion_service.ingest_company(pseudo_case)
+
+        # Patch SIC code from the submissions response already fetched in VALIDATE
+        # (avoids a duplicate HTTP round-trip in _fetch_sic).
+        if company_sic:
+            from auditchain.data.repositories import CompanyRepository as _CR
+            with get_session() as _s:
+                _CR(_s).upsert(
+                    cik=cik, name=company_name, ticker=company_ticker,
+                    sic_code=company_sic, industry=company_industry,
+                )
         financial_items_extracted = result.get("line_items", 0)
         parsed_filings_count = result.get("filings", 0)
 

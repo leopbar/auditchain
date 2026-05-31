@@ -88,6 +88,10 @@ class FinancialPeriod(BaseModel):
     indicators_found: int = Field(0, description="Number of financial indicators successfully retrieved (max 17)")
     critical_missing: list[str] = Field(default_factory=list, description="Names of indicators that were not found in this filing")
 
+    # Sector classification — used to gate quantitative models
+    sic_code: str | None = Field(None, description="SEC SIC code (4-digit industry classifier)")
+    sector: str | None = Field(None, description="High-level sector derived from SIC code (e.g. 'financial', 'manufacturing')")
+
 
 class CheckResult(BaseModel):
     """Result of a single validation check. Used inside reports to enumerate what was tested."""

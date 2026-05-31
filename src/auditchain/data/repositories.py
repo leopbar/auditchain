@@ -41,27 +41,43 @@ class CompanyRepository:
         ticker: str | None = None,
         is_known_fraud: bool = False,
         fraud_notes: str | None = None,
+        sic_code: str | None = None,
+        industry: str | None = None,
     ) -> CompanyORM:
         """Insert or update a company by CIK.
 
         If a row with this CIK already exists, the mutable fields are updated.
+        ``sic_code`` and ``industry`` are only updated when a non-null value is
+        provided — existing values are preserved on re-ingestion.
         Returns the persisted ORM instance.
         """
-        stmt = pg_insert(CompanyORM).values(
+        values: dict = dict(
             cik=cik,
             name=name,
             ticker=ticker,
             is_known_fraud=is_known_fraud,
             fraud_notes=fraud_notes,
         )
+        if sic_code is not None:
+            values["sic_code"] = sic_code
+        if industry is not None:
+            values["industry"] = industry
+
+        stmt = pg_insert(CompanyORM).values(**values)
+        update_set: dict = {
+            "name": stmt.excluded.name,
+            "ticker": stmt.excluded.ticker,
+            "is_known_fraud": stmt.excluded.is_known_fraud,
+            "fraud_notes": stmt.excluded.fraud_notes,
+        }
+        if sic_code is not None:
+            update_set["sic_code"] = stmt.excluded.sic_code
+        if industry is not None:
+            update_set["industry"] = stmt.excluded.industry
+
         stmt = stmt.on_conflict_do_update(
             index_elements=["cik"],
-            set_={
-                "name": stmt.excluded.name,
-                "ticker": stmt.excluded.ticker,
-                "is_known_fraud": stmt.excluded.is_known_fraud,
-                "fraud_notes": stmt.excluded.fraud_notes,
-            },
+            set_=update_set,
         ).returning(CompanyORM)
 
         result = self._session.execute(stmt).scalar_one()

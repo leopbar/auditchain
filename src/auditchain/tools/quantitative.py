@@ -193,6 +193,39 @@ def compute_altman_zscore_simplified(period: FinancialPeriod) -> CheckResult:
 
     A result is only returned when >= 3 of the 5 components have real data.
     """
+    # Gate 1: financial-sector companies (insurance, banking, REITs, holding
+    # companies — SIC 6000-6799). Policy reserves and investment portfolios
+    # structurally distort every component of the model. Altman himself excluded
+    # financial institutions from the original 1968 sample.
+    if period.sector == "financial":
+        return CheckResult(
+            name="altman_zscore",
+            passed=False,
+            status="inconclusive",
+            notes=(
+                f"Inconclusive: Altman Z-Score is not calibrated for financial-sector "
+                f"companies (SIC {period.sic_code}). Policy reserves, investment portfolios, "
+                f"and the absence of current asset classification structurally distort all "
+                f"five model components. Use sector-specific solvency metrics instead."
+            )
+        )
+
+    # Gate 2: structural fallback for companies whose SIC has not yet been
+    # ingested but whose balance sheet pattern indicates a financial institution
+    # (insurance/banking companies never report AssetsCurrent or LiabilitiesCurrent
+    # under US GAAP, making X1 uncomputable and the model invalid).
+    if period.sic_code is None and period.current_assets is None and period.current_liabilities is None:
+        return CheckResult(
+            name="altman_zscore",
+            passed=False,
+            status="inconclusive",
+            notes=(
+                "Inconclusive: neither current_assets nor current_liabilities are available. "
+                "This balance sheet structure is typical of financial institutions (insurance, "
+                "banking) for which Altman Z-Score is not valid. Re-ingest to populate SIC code."
+            )
+        )
+
     if not period.total_assets or period.total_assets == 0:
         return CheckResult(
             name="altman_zscore",

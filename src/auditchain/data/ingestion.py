@@ -20,6 +20,8 @@ from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
 
+import httpx
+
 from auditchain.core.config import get_settings
 from auditchain.core.logging import get_logger
 from auditchain.data.database import get_session
@@ -110,12 +112,15 @@ class FilingIngestionService:
             filing_repo = FilingRepository(session)
             line_item_repo = FinancialLineItemRepository(session)
 
+            sic_code, industry = self._fetch_sic(case.cik)
             company = company_repo.upsert(
                 cik=case.cik,
                 name=case.name,
                 ticker=case.ticker,
                 is_known_fraud=case.is_known_fraud,
                 fraud_notes=case.description,
+                sic_code=sic_code,
+                industry=industry,
             )
             log.info("company_upserted", company_id=company.id)
 
@@ -165,6 +170,28 @@ class FilingIngestionService:
                 totals[key] += value
         logger.info("ingestion_complete", **totals)
         return totals
+
+    def _fetch_sic(self, cik: str) -> tuple[str | None, str | None]:
+        """Fetch SIC code and industry description from the SEC submissions API.
+
+        Returns ``(sic_code, industry)`` or ``(None, None)`` on any error.
+        The call is best-effort — ingestion continues even if it fails.
+        """
+        try:
+            cik_padded = cik.zfill(10)
+            url = f"https://data.sec.gov/submissions/CIK{cik_padded}.json"
+            resp = httpx.get(
+                url,
+                headers={"User-Agent": self._settings.sec_user_agent},
+                timeout=10.0,
+                follow_redirects=True,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("sic"), data.get("sicDescription")
+        except Exception as exc:
+            logger.warning("sic_fetch_failed", cik=cik, error=str(exc))
+            return None, None
 
     @staticmethod
     def _load_facts(path: Path) -> CompanyFacts:

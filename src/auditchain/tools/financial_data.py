@@ -13,6 +13,39 @@ from auditchain.data.database import get_session
 from auditchain.data.models import CompanyORM, FilingORM, FinancialLineItemORM
 from auditchain.data.repositories import CompanyRepository
 from auditchain.schemas.components import FinancialPeriod
+
+
+def _sic_to_sector(sic_code: str | None) -> str | None:
+    """Map a 4-digit SEC SIC code to a high-level sector label.
+
+    Used to gate quantitative models that are not calibrated for certain
+    sectors (e.g. Altman Z-Score for financial institutions).
+    """
+    if sic_code is None:
+        return None
+    try:
+        sic = int(sic_code)
+    except ValueError:
+        return None
+    if 100 <= sic <= 999:
+        return "agriculture"
+    if 1000 <= sic <= 1499:
+        return "mining"
+    if 1500 <= sic <= 1799:
+        return "construction"
+    if 2000 <= sic <= 3999:
+        return "manufacturing"
+    if 4000 <= sic <= 4999:
+        return "transport_utilities"
+    if 5000 <= sic <= 5999:
+        return "trade"
+    if 6000 <= sic <= 6799:
+        return "financial"   # banks, insurance, REITs, holding companies
+    if 7000 <= sic <= 8999:
+        return "services"
+    if 9000 <= sic <= 9999:
+        return "public_administration"
+    return "other"
 from auditchain.tools.schemas import (
     CompanyInfo,
     FilingSummary,
@@ -357,12 +390,19 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
             critical_missing = [k for k, v in values.items() if v is None]
             found_count = len(values) - len(critical_missing)
 
+            # Sector classification from company SIC code
+            company = session.get(CompanyORM, filing.company_id)
+            sic_code = company.sic_code if company else None
+            sector = _sic_to_sector(sic_code)
+
             logger.info(
                 "tool_get_financial_summary_success",
                 filing_id=filing_id,
                 indicators_found=found_count,
                 indicators_total=len(values),
                 critical_missing=critical_missing,
+                sic_code=sic_code,
+                sector=sector,
             )
             logger.info(
                 "financial_summary_provenance",
@@ -376,6 +416,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 period_end=filing.period_of_report,
                 indicators_found=found_count,
                 critical_missing=critical_missing,
+                sic_code=sic_code,
+                sector=sector,
                 **values,
             )
     except Exception as e:
