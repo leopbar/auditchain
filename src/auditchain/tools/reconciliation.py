@@ -21,19 +21,18 @@ ACCRUALS_THRESHOLD_PCT = 0.10  # 10% of assets is flagged as high accruals
 
 @tool
 def check_accounting_equation(period: FinancialPeriod) -> CheckResult:
-    """Verifies the fundamental accounting equation: Total Assets = Total Liabilities + Stockholders' Equity. 
-    
-    Returns a CheckResult indicating whether the equation balances within tolerance (0.1% of total assets). 
-    Use this tool to validate any FinancialPeriod. If total_assets, total_liabilities,
-    or stockholders_equity is missing (None), the check returns status="inconclusive"
-    (NOT a failure) and names the missing field(s) — it is not a fraud signal.
+    """Verifies the fundamental accounting equation: Assets = Liabilities + Equity.
+
+    The equity side includes:
+      - total_liabilities
+      - stockholders_equity (permanent equity, NCI-inclusive)
+      - redeemable_nci (mezzanine item — included when available)
+
+    Returns INCONCLUSIVE (NOT a failure) when required fields are missing.
+    Tolerance: 0.1% of total assets.
     """
     logger.info("check_accounting_equation_called", filing_id=period.filing_id)
 
-    # Identify any missing inputs by their human-readable names. Missing data is
-    # INCONCLUSIVE (the check could not run), NOT a failure. Downstream logic
-    # relies on status="inconclusive" to avoid forcing an ADVERSE conclusion
-    # just because a field could not be read from the filing.
     missing = [
         label
         for label, value in (
@@ -57,22 +56,36 @@ def check_accounting_equation(period: FinancialPeriod) -> CheckResult:
             ),
         )
 
-    expected = period.total_liabilities + period.stockholders_equity
+    # Build the right-hand side, explicitly including mezzanine redeemable NCI
+    # when reported (e.g. Tesla energy subsidiaries). Without it the equation
+    # shows a false gap equal to the redeemable NCI balance.
+    rhs = period.total_liabilities + period.stockholders_equity
+    redeemable_note = ""
+    if period.redeemable_nci is not None:
+        rhs += period.redeemable_nci
+        redeemable_note = f" + RedeemableNCI=${period.redeemable_nci:,.0f}"
+
     actual = period.total_assets
     tolerance = abs(period.total_assets) * ACCOUNTING_EQUATION_TOLERANCE_PCT
-    discrepancy = actual - expected
+    discrepancy = actual - rhs
     passed = abs(discrepancy) <= tolerance
 
+    components = (
+        f"Liabilities=${period.total_liabilities:,.0f}"
+        f" + Equity=${period.stockholders_equity:,.0f}"
+        f"{redeemable_note}"
+        f" = ${rhs:,.0f}"
+    )
     if passed:
-        notes = f"Equation balances within tolerance. Discrepancy: ${discrepancy:,.0f}, tolerance: ${tolerance:,.0f}"
+        notes = f"Equation balances within tolerance. {components}. Assets=${actual:,.0f}. Discrepancy: ${discrepancy:,.0f}, tolerance: ${tolerance:,.0f}"
     else:
-        notes = f"Equation DOES NOT balance. Discrepancy: ${discrepancy:,.0f} exceeds tolerance: ${tolerance:,.0f}"
+        notes = f"Equation DOES NOT balance. {components}. Assets=${actual:,.0f}. Discrepancy: ${discrepancy:,.0f} exceeds tolerance: ${tolerance:,.0f}"
 
     return CheckResult(
         name="accounting_equation",
         passed=passed,
         status="passed" if passed else "failed",
-        expected=expected,
+        expected=rhs,
         actual=actual,
         tolerance=tolerance,
         notes=notes

@@ -131,6 +131,8 @@ async def run_ingestion_with_streaming(
         company_name = submissions.get("name", "Unknown")
         tickers_list = submissions.get("tickers", [])
         company_ticker = tickers_list[0] if tickers_list else None
+        company_sic = submissions.get("sic")
+        company_industry = submissions.get("sicDescription")
 
         # Verify at least one 10-K exists
         recent_forms = submissions.get("filings", {}).get("recent", {}).get("form", [])
@@ -312,6 +314,16 @@ async def run_ingestion_with_streaming(
         # Reuse FilingIngestionService from src/auditchain/data/ingestion.py
         ingestion_service = FilingIngestionService()
         result = ingestion_service.ingest_company(pseudo_case)
+
+        # Patch SIC code from the submissions response already fetched in VALIDATE
+        # (avoids a duplicate HTTP round-trip in _fetch_sic).
+        if company_sic:
+            from auditchain.data.repositories import CompanyRepository as _CR
+            with get_session() as _s:
+                _CR(_s).upsert(
+                    cik=cik, name=company_name, ticker=company_ticker,
+                    sic_code=company_sic, industry=company_industry,
+                )
         financial_items_extracted = result.get("line_items", 0)
         parsed_filings_count = result.get("filings", 0)
 
@@ -475,33 +487,36 @@ def _delete_existing_company_data(cik: str) -> dict[str, int]:
             ).scalars().all()
         ]
 
-        # Find audit runs referencing those filings
+        # Delete ALL audit runs for this company (FK on company_id, not just filing_id).
+        # Querying only by filing_id misses runs with filing_id=NULL or runs from
+        # other filings, which would block the final DELETE on companies.
+        audit_run_ids = [
+            r.id for r in
+            session.execute(
+                select(AuditRunORM).where(AuditRunORM.company_id == company_id)
+            ).scalars().all()
+        ]
+
+        if audit_run_ids:
+            # Delete red_flags
+            result = session.execute(
+                delete(RedFlagORM).where(RedFlagORM.run_id.in_(audit_run_ids))
+            )
+            counts["red_flags"] = result.rowcount
+
+            # Delete agent_steps
+            result = session.execute(
+                delete(AgentStepORM).where(AgentStepORM.run_id.in_(audit_run_ids))
+            )
+            counts["agent_steps"] = result.rowcount
+
+            # Delete audit_runs
+            result = session.execute(
+                delete(AuditRunORM).where(AuditRunORM.id.in_(audit_run_ids))
+            )
+            counts["audit_runs"] = result.rowcount
+
         if filing_ids:
-            audit_run_ids = [
-                r.id for r in
-                session.execute(
-                    select(AuditRunORM).where(AuditRunORM.filing_id.in_(filing_ids))
-                ).scalars().all()
-            ]
-
-            if audit_run_ids:
-                # Delete red_flags
-                result = session.execute(
-                    delete(RedFlagORM).where(RedFlagORM.run_id.in_(audit_run_ids))
-                )
-                counts["red_flags"] = result.rowcount
-
-                # Delete agent_steps
-                result = session.execute(
-                    delete(AgentStepORM).where(AgentStepORM.run_id.in_(audit_run_ids))
-                )
-                counts["agent_steps"] = result.rowcount
-
-                # Delete audit_runs
-                result = session.execute(
-                    delete(AuditRunORM).where(AuditRunORM.id.in_(audit_run_ids))
-                )
-                counts["audit_runs"] = result.rowcount
 
             # Delete disclosures
             result = session.execute(

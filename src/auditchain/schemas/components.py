@@ -68,6 +68,15 @@ class FinancialPeriod(BaseModel):
     total_liabilities: float | None = Field(None, description="Total Liabilities")
     current_liabilities: float | None = Field(None, description="Total Current Liabilities")
     stockholders_equity: float | None = Field(None, description="Total Stockholders' Equity")
+    retained_earnings: float | None = Field(None, description="Retained Earnings (Accumulated Deficit) — cumulative, used as Altman X2")
+    redeemable_nci: float | None = Field(
+        None,
+        description=(
+            "Redeemable Noncontrolling Interest (mezzanine equity). "
+            "Sits between liabilities and permanent equity on the balance sheet. "
+            "Must be included in the equity side of the accounting equation."
+        ),
+    )
     cash: float | None = Field(None, description="Cash and Cash Equivalents")
     
     # Cash Flow
@@ -78,6 +87,10 @@ class FinancialPeriod(BaseModel):
     # Data completeness — populated by get_financial_summary
     indicators_found: int = Field(0, description="Number of financial indicators successfully retrieved (max 17)")
     critical_missing: list[str] = Field(default_factory=list, description="Names of indicators that were not found in this filing")
+
+    # Sector classification — used to gate quantitative models
+    sic_code: str | None = Field(None, description="SEC SIC code (4-digit industry classifier)")
+    sector: str | None = Field(None, description="High-level sector derived from SIC code (e.g. 'financial', 'manufacturing')")
 
 
 class CheckResult(BaseModel):

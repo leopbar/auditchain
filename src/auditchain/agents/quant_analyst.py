@@ -40,7 +40,11 @@ The red_flags array is NOT redundant with the score fields. They serve different
 
 WITHOUT red_flags, the entire audit's risk score will be ZERO regardless of how alarming the scores are. The Supervisor agent calculates risk ONLY from red_flags.
 
-ABSOLUTE RULE: If Altman Z-Score < 2.99 OR Beneish M-Score > -1.78 OR Accruals > 10%, your red_flags array MUST NOT be empty. Submitting alarming scores with empty red_flags is INVALID.
+RULE — INCONCLUSIVE MODELS: If a tool returns status="inconclusive", do NOT create a red flag for that model. Inconclusive means insufficient data to compute the score, not a finding. Report it in the interpretation field only.
+
+RULE — REAL SCORES: Only create red flags when a tool returned an actual numeric score (status="passed" or "failed"). If Beneish M-Score > -1.78 with real data → red flag (high severity). If Altman Z-Score < 1.81 with real data → red flag (high severity). If Altman Z-Score 1.81–2.99 → red flag (medium severity). If Accruals > 10% → red flag (medium severity).
+
+Without red_flags, the audit risk score will be ZERO regardless of scores. Submitting alarming real scores with empty red_flags is INVALID.
 
 ═══════════════════════════════════════════════════════════════
 

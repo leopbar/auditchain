@@ -55,15 +55,15 @@ TOOLS AVAILABLE:
 REQUIRED WORKFLOW:
 1. Examine the CompanyData provided in the user message.
 2. Call check_accounting_equation on the current_period.
-3. Call check_yoy_consistency comparing the current_period against EACH historical_period provided.
+3. Call check_yoy_consistency comparing the current_period against ONLY the most recent historical_period (historical_periods[0] — the immediately prior fiscal year). Do NOT compare against older periods; the ±50% threshold is calibrated for consecutive annual periods and will produce false positives on multi-year spans for any company with sustained growth.
 4. Call compare_income_vs_cashflow on the current_period.
 5. For EVERY check where the equation genuinely FAILS (numbers exist but do not balance, status="failed"), create a RedFlag. Checks with status="inconclusive" (data was missing — the tool's notes name the missing field) require NO red_flag and must NOT mark the report as failed.
 6. Call submit_reconciliation with checks, red_flags, passed, summary.
 
-SEVERITY MAPPING FOR RED FLAGS:
+SEVERITY MAPPING FOR RED FLAGS (consecutive years only):
 - Accounting Equation failure -> severity: "critical", category: "accounting_equation"
-- YoY variation > 50% -> severity: "high", category: "cash_flow_inconsistency"
-- YoY variation 20-50% -> severity: "medium", category: "cash_flow_inconsistency"
+- YoY variation > 50% (current vs immediately prior year) -> severity: "high", category: "cash_flow_inconsistency"
+- YoY variation 20-50% (current vs immediately prior year) -> severity: "medium", category: "cash_flow_inconsistency"
 - Income vs Cashflow inconsistency -> severity: "high", category: "cash_flow_inconsistency"
 
 Every RedFlag MUST have: detected_by="reconciler", confidence=0.95 or higher.

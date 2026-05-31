@@ -37,9 +37,9 @@ from auditchain.agents.supervisor import (
 from auditchain.core.logging import get_logger
 from auditchain.graph.cost import summarize_usage
 from auditchain.graph.state import AuditState
-from auditchain.schemas.enums import AuditPhase, AuditConclusion
-from auditchain.schemas.reports import AuditReport
-from auditchain.schemas.components import AgentStepMetrics
+from auditchain.schemas.enums import AuditPhase, AuditConclusion, FlagSeverity
+from auditchain.schemas.reports import AuditReport, InvestigationReport
+from auditchain.schemas.components import AgentStepMetrics, RedFlag
 from datetime import datetime
 from auditchain.data.database import get_session
 from auditchain.data.audit_repository import AuditRepository
@@ -369,18 +369,34 @@ def investigator_node(state: AuditState) -> dict[str, Any]:
     )
 
     agent = _get_investigator_agent()
-    response = agent.invoke({"messages": [HumanMessage(content=user_prompt)]})
-    messages = response.get("messages", [])
+    messages = []
+    try:
+        response = agent.invoke(
+            {"messages": [HumanMessage(content=user_prompt)]},
+            config={"recursion_limit": 15},
+        )
+        messages = response.get("messages", [])
+    except Exception as exc:
+        log.warning("investigator_node_invoke_error", error=str(exc))
+        # Fall through — attempt to extract a partial report from whatever messages
+        # were accumulated before the exception (e.g. RecursionError mid-run).
 
     report = extract_investigation_from_messages(messages)
 
     if report is None:
-        log.error("investigator_node_no_submission")
-        return {
-            "messages": messages,
-            "errors": ["Investigator did not submit InvestigationReport"],
-            "current_phase": AuditPhase.FAILED,
-        }
+        # Build a minimal fallback so the rest of the pipeline can still complete.
+        # The investigation is marked as inconclusive but the audit is not halted.
+        log.warning("investigator_node_fallback_report", reason="no_submission")
+        report = InvestigationReport(
+            filing_id=state["target_filing_id"],
+            summary="Qualitative investigation could not be completed (agent did not submit).",
+            mdna_findings="Investigation inconclusive.",
+            risk_factors_summary="",
+            related_parties_detected=[],
+            evasive_language_detected=False,
+            red_flags=[],
+            key_quotes=[],
+        )
 
     # Calculate usage
     tokens_in = 0
@@ -432,8 +448,51 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
     log.info("supervisor_node_started")
     started_at = datetime.utcnow()
 
-    # 1. Calculate Risk Score and Level
-    risk_score, risk_level = calculate_risk_score(state["red_flags"])
+    # 1. Determine effective red flags.
+    #
+    # Promotion rule: promote investigator MEDIUM → HIGH only when ALL of the
+    # following conditions hold simultaneously:
+    #   a) Beneish is inconclusive (the main manipulation detector could not run)
+    #   b) Altman Z-Score is NOT in the safe zone (< 2.99) — a healthy company
+    #      with safe Altman should not be penalised for a missing Beneish
+    #   c) Accruals ratio is positive or unavailable — negative accruals signal
+    #      high earnings quality and contradict the need for promotion
+    #
+    # This prevents healthy companies (high Altman, negative accruals) from
+    # being over-scored purely because their XBRL structure lacks Beneish inputs.
+    quant = state.get("quant_analysis")
+    beneish_inconclusive = quant is None or quant.beneish_mscore is None
+    altman_safe = quant is not None and quant.altman_zscore is not None and quant.altman_zscore >= 2.99
+    accruals_good = quant is not None and quant.accruals_ratio is not None and quant.accruals_ratio < 0
+
+    # Promote only when Beneish is missing AND quantitative signals are not reassuring
+    should_promote = beneish_inconclusive and not altman_safe and not accruals_good
+
+    effective_flags: list[RedFlag] = []
+    promoted_count = 0
+    for flag in state["red_flags"]:
+        if should_promote and flag.detected_by == "investigator" and flag.severity == FlagSeverity.MEDIUM:
+            effective_flags.append(flag.model_copy(update={"severity": FlagSeverity.HIGH}))
+            promoted_count += 1
+        else:
+            effective_flags.append(flag)
+
+    if promoted_count:
+        log.info(
+            "qualitative_flags_promoted",
+            reason="beneish_inconclusive_no_quant_reassurance",
+            promoted=promoted_count,
+        )
+    elif beneish_inconclusive and not should_promote:
+        log.info(
+            "qualitative_flags_promotion_suppressed",
+            reason="altman_safe_or_accruals_good",
+            altman=quant.altman_zscore if quant else None,
+            accruals=quant.accruals_ratio if quant else None,
+        )
+
+    # 1b. Calculate Risk Score and Level from effective (possibly promoted) flags
+    risk_score, risk_level = calculate_risk_score(effective_flags)
     
     # 2. Determine Conclusion.
     # Only a GENUINE integrity failure (a check with status="failed") may force

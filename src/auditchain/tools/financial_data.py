@@ -13,6 +13,39 @@ from auditchain.data.database import get_session
 from auditchain.data.models import CompanyORM, FilingORM, FinancialLineItemORM
 from auditchain.data.repositories import CompanyRepository
 from auditchain.schemas.components import FinancialPeriod
+
+
+def _sic_to_sector(sic_code: str | None) -> str | None:
+    """Map a 4-digit SEC SIC code to a high-level sector label.
+
+    Used to gate quantitative models that are not calibrated for certain
+    sectors (e.g. Altman Z-Score for financial institutions).
+    """
+    if sic_code is None:
+        return None
+    try:
+        sic = int(sic_code)
+    except ValueError:
+        return None
+    if 100 <= sic <= 999:
+        return "agriculture"
+    if 1000 <= sic <= 1499:
+        return "mining"
+    if 1500 <= sic <= 1799:
+        return "construction"
+    if 2000 <= sic <= 3999:
+        return "manufacturing"
+    if 4000 <= sic <= 4999:
+        return "transport_utilities"
+    if 5000 <= sic <= 5999:
+        return "trade"
+    if 6000 <= sic <= 6799:
+        return "financial"   # banks, insurance, REITs, holding companies
+    if 7000 <= sic <= 8999:
+        return "services"
+    if 9000 <= sic <= 9999:
+        return "public_administration"
+    return "other"
 from auditchain.tools.schemas import (
     CompanyInfo,
     FilingSummary,
@@ -141,14 +174,24 @@ def list_filings(
 
 
 def _get_value_for_concept(
-    session, filing_id: int, concept_names: list[str]
+    session,
+    filing_id: int,
+    concept_names: list[str],
+    target_date=None,
 ) -> tuple[float | None, str | None]:
-    """Fetch the latest value for the first matching XBRL concept.
+    """Fetch the value for the first matching XBRL concept.
+
+    Lookup priority (each step tries frame != '' first, then any frame):
+      1. Exact match on ``target_date`` (the filing's primary period) — avoids
+         mixing periods when a 10-K stores comparative years side-by-side.
+      2. Most-recent period across all rows for this filing (fallback).
 
     Returns a ``(value, matched_concept)`` tuple so callers can record which
     alias actually resolved (provenance). Returns ``(None, None)`` when no
     concept in ``concept_names`` matches.
     """
+    from datetime import date as date_type
+
     for concept in concept_names:
         base = (
             select(FinancialLineItemORM.value)
@@ -156,19 +199,45 @@ def _get_value_for_concept(
                 FinancialLineItemORM.filing_id == filing_id,
                 FinancialLineItemORM.concept == concept,
             )
-            .order_by(FinancialLineItemORM.period_end.desc())
-            .limit(1)
         )
-        # Prefer the consolidated figure (frame != '' means SEC assigned a standard
-        # calendar-period identifier, which only happens for company-level totals).
-        val = session.execute(base.where(FinancialLineItemORM.frame != "")).scalar_one_or_none()
-        # Fallback: companies with non-December fiscal year-ends (e.g. Apple) have
-        # frame='' even on consolidated facts because the period doesn't align with
-        # a standard calendar year.
+
+        clean = FinancialLineItemORM.quality_flag == None  # noqa: E711
+
+        # --- Pass 1: exact period match, clean, framed ---
+        if target_date is not None:
+            exact = base.where(FinancialLineItemORM.period_end == target_date)
+            val = session.execute(
+                exact.where(FinancialLineItemORM.frame != "").where(clean).limit(1)
+            ).scalar_one_or_none()
+            if val is None:
+                val = session.execute(exact.where(clean).limit(1)).scalar_one_or_none()
+            # Fallback: flagged value at exact period (better than wrong period)
+            if val is None:
+                val = session.execute(
+                    exact.where(FinancialLineItemORM.frame != "").limit(1)
+                ).scalar_one_or_none()
+            if val is None:
+                val = session.execute(exact.limit(1)).scalar_one_or_none()
+            if val is not None:
+                return float(val), concept
+
+        # --- Pass 2: latest period, prefer clean + framed ---
+        latest = base.order_by(FinancialLineItemORM.period_end.desc())
+        val = session.execute(
+            latest.where(FinancialLineItemORM.frame != "").where(clean).limit(1)
+        ).scalar_one_or_none()
         if val is None:
-            val = session.execute(base).scalar_one_or_none()
+            val = session.execute(latest.where(clean).limit(1)).scalar_one_or_none()
+        # Fallback: flagged value if nothing clean exists
+        if val is None:
+            val = session.execute(
+                latest.where(FinancialLineItemORM.frame != "").limit(1)
+            ).scalar_one_or_none()
+        if val is None:
+            val = session.execute(latest.limit(1)).scalar_one_or_none()
         if val is not None:
             return float(val), concept
+
     return None, None
 
 
@@ -177,6 +246,7 @@ def _derive_balance_sheet_aggregates(
     filing_id: int,
     values: dict[str, float | None],
     provenance: dict[str, str],
+    target_date=None,
 ) -> None:
     """Fill in ``total_liabilities`` / ``stockholders_equity`` when not tagged directly.
 
@@ -195,7 +265,7 @@ def _derive_balance_sheet_aggregates(
     if values.get("total_liabilities") is None:
         current = values.get("current_liabilities")
         noncurrent, _ = _get_value_for_concept(
-            session, filing_id, ["LiabilitiesNoncurrent"]
+            session, filing_id, ["LiabilitiesNoncurrent"], target_date
         )
         if current is not None and noncurrent is not None:
             values["total_liabilities"] = current + noncurrent
@@ -205,8 +275,8 @@ def _derive_balance_sheet_aggregates(
 
     # stockholders_equity (total, including NCI) from parent + minority interest
     if values.get("stockholders_equity") is None:
-        parent, _ = _get_value_for_concept(session, filing_id, ["StockholdersEquity"])
-        nci, _ = _get_value_for_concept(session, filing_id, ["MinorityInterest"])
+        parent, _ = _get_value_for_concept(session, filing_id, ["StockholdersEquity"], target_date)
+        nci, _ = _get_value_for_concept(session, filing_id, ["MinorityInterest"], target_date)
         if parent is not None:
             values["stockholders_equity"] = parent + (nci or 0.0)
             provenance["stockholders_equity"] = (
@@ -215,23 +285,15 @@ def _derive_balance_sheet_aggregates(
                 else "alias: StockholdersEquity (no NCI reported)"
             )
 
-    # Add redeemable NCI (mezzanine item between liabilities and permanent equity).
-    # Some filers (e.g. Tesla) report a "redeemable noncontrolling interest" that
-    # sits outside both Liabilities and the NCI-inclusive equity tag.  It must be
-    # included in the equity side for the accounting equation to balance.
-    redeemable_nci, _ = _get_value_for_concept(
-        session, filing_id, ["RedeemableNoncontrollingInterestEquityCarryingAmount"]
-    )
-    if redeemable_nci is not None and values.get("stockholders_equity") is not None:
-        values["stockholders_equity"] += redeemable_nci
-        provenance["stockholders_equity"] = (
-            provenance.get("stockholders_equity", "direct")
-            + " + RedeemableNoncontrollingInterest"
-        )
+    # NOTE: RedeemableNoncontrollingInterestEquityCarryingAmount is intentionally
+    # NOT merged into stockholders_equity here. It is fetched as a separate field
+    # (redeemable_nci) in get_financial_summary and included explicitly in
+    # check_accounting_equation. Keeping it separate makes the balance sheet
+    # components auditable and avoids conflating permanent equity with mezzanine items.
 
     # Last resort: balance-sheet identity (right-hand side total == total assets)
     total_rhs, _ = _get_value_for_concept(
-        session, filing_id, ["LiabilitiesAndStockholdersEquity"]
+        session, filing_id, ["LiabilitiesAndStockholdersEquity"], target_date
     )
     if total_rhs is not None:
         if (
@@ -311,6 +373,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                     "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
                     "StockholdersEquity",
                 ],
+                "retained_earnings": ["RetainedEarningsAccumulatedDeficit"],
+                "redeemable_nci": ["RedeemableNoncontrollingInterestEquityCarryingAmount"],
                 "cash": [
                     "CashAndCashEquivalentsAtCarryingValue",
                     "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
@@ -320,19 +384,30 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 "cash_from_financing": ["NetCashProvidedByUsedInFinancingActivities"],
             }
 
+            # Use the filing's primary period as the anchor date so all concepts
+            # are read from the same year. A single 10-K accession may contain
+            # comparative data from prior years; without anchoring, concepts with
+            # different frame coverage can resolve to different periods.
+            target_date = filing.period_of_report
+
             values: dict[str, float | None] = {}
             provenance: dict[str, str] = {}
             for key, concepts in indicators.items():
-                val, matched = _get_value_for_concept(session, filing_id, concepts)
+                val, matched = _get_value_for_concept(session, filing_id, concepts, target_date)
                 values[key] = val
                 provenance[key] = matched if matched is not None else "not_found"
 
             # Fill in balance-sheet aggregates that filers often omit (e.g. the
             # aggregate Liabilities, or NCI-adjusted equity) by composition.
-            _derive_balance_sheet_aggregates(session, filing_id, values, provenance)
+            _derive_balance_sheet_aggregates(session, filing_id, values, provenance, target_date)
 
             critical_missing = [k for k, v in values.items() if v is None]
             found_count = len(values) - len(critical_missing)
+
+            # Sector classification from company SIC code
+            company = session.get(CompanyORM, filing.company_id)
+            sic_code = company.sic_code if company else None
+            sector = _sic_to_sector(sic_code)
 
             logger.info(
                 "tool_get_financial_summary_success",
@@ -340,6 +415,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 indicators_found=found_count,
                 indicators_total=len(values),
                 critical_missing=critical_missing,
+                sic_code=sic_code,
+                sector=sector,
             )
             logger.info(
                 "financial_summary_provenance",
@@ -353,6 +430,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 period_end=filing.period_of_report,
                 indicators_found=found_count,
                 critical_missing=critical_missing,
+                sic_code=sic_code,
+                sector=sector,
                 **values,
             )
     except Exception as e:
