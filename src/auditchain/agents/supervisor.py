@@ -116,8 +116,13 @@ RECOMMENDATIONS:
 """
 
 def build_supervisor_agent(model_name: str | None = None):
-    """Builds and returns the Supervisor Agent (uses the configured smart model)."""
-    model = model_name or settings.llm_smart_model
+    """Builds and returns the Supervisor Agent (uses the fast model).
+
+    The supervisor only formats structured findings into a written report —
+    it does not analyse raw data. gpt-4o-mini is sufficient and avoids
+    exhausting the gpt-4o TPM budget shared with Collector/Reconciler/Quant.
+    """
+    model = model_name or settings.llm_fast_model
     llm = ChatOpenAI(
         model=model,
         temperature=0,
