@@ -205,8 +205,14 @@ function PhaseSummaryLine({ phase }: { phase: PhaseState }) {
       }
       break;
     case "quant_analyst":
-      if (s.beneish_mscore !== undefined && s.altman_zscore !== undefined) {
+      if (s.beneish_mscore != null && s.altman_zscore != null) {
         line = `M-Score: ${(s.beneish_mscore as number).toFixed(2)} · Z-Score: ${(s.altman_zscore as number).toFixed(2)}`;
+      } else if (s.altman_zscore != null) {
+        line = `M-Score: inconclusive · Z-Score: ${(s.altman_zscore as number).toFixed(2)}`;
+      } else if (s.beneish_mscore != null) {
+        line = `M-Score: ${(s.beneish_mscore as number).toFixed(2)} · Z-Score: inconclusive`;
+      } else {
+        line = `Quantitative models inconclusive (insufficient data)`;
       }
       break;
     case "investigator":

@@ -37,9 +37,9 @@ from auditchain.agents.supervisor import (
 from auditchain.core.logging import get_logger
 from auditchain.graph.cost import summarize_usage
 from auditchain.graph.state import AuditState
-from auditchain.schemas.enums import AuditPhase, AuditConclusion
+from auditchain.schemas.enums import AuditPhase, AuditConclusion, FlagSeverity
 from auditchain.schemas.reports import AuditReport
-from auditchain.schemas.components import AgentStepMetrics
+from auditchain.schemas.components import AgentStepMetrics, RedFlag
 from datetime import datetime
 from auditchain.data.database import get_session
 from auditchain.data.audit_repository import AuditRepository
@@ -432,8 +432,36 @@ def supervisor_node(state: AuditState) -> dict[str, Any]:
     log.info("supervisor_node_started")
     started_at = datetime.utcnow()
 
-    # 1. Calculate Risk Score and Level
-    risk_score, risk_level = calculate_risk_score(state["red_flags"])
+    # 1. Determine effective red flags, promoting qualitative signals when the
+    # primary fraud-detection model (Beneish) could not run. Beneish is the
+    # only model calibrated to detect earnings manipulation; when it is
+    # inconclusive (missing revenue or insufficient components), qualitative
+    # findings from the investigator are the main evidence and must carry
+    # proportional weight. Without promotion, 3 × MEDIUM investigator flags
+    # (3 × 8 = 24 pts) cannot overcome the score gap left by a missing HIGH
+    # Beneish flag, causing the system to under-score qualitative-only frauds
+    # (e.g. disclosure omissions like Allarity Therapeutics).
+    quant = state.get("quant_analysis")
+    beneish_inconclusive = quant is None or quant.beneish_mscore is None
+
+    effective_flags: list[RedFlag] = []
+    promoted_count = 0
+    for flag in state["red_flags"]:
+        if beneish_inconclusive and flag.detected_by == "investigator" and flag.severity == FlagSeverity.MEDIUM:
+            effective_flags.append(flag.model_copy(update={"severity": FlagSeverity.HIGH}))
+            promoted_count += 1
+        else:
+            effective_flags.append(flag)
+
+    if promoted_count:
+        log.info(
+            "qualitative_flags_promoted",
+            reason="beneish_inconclusive",
+            promoted=promoted_count,
+        )
+
+    # 1b. Calculate Risk Score and Level from effective (possibly promoted) flags
+    risk_score, risk_level = calculate_risk_score(effective_flags)
     
     # 2. Determine Conclusion.
     # Only a GENUINE integrity failure (a check with status="failed") may force

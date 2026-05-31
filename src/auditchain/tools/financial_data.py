@@ -141,14 +141,24 @@ def list_filings(
 
 
 def _get_value_for_concept(
-    session, filing_id: int, concept_names: list[str]
+    session,
+    filing_id: int,
+    concept_names: list[str],
+    target_date=None,
 ) -> tuple[float | None, str | None]:
-    """Fetch the latest value for the first matching XBRL concept.
+    """Fetch the value for the first matching XBRL concept.
+
+    Lookup priority (each step tries frame != '' first, then any frame):
+      1. Exact match on ``target_date`` (the filing's primary period) — avoids
+         mixing periods when a 10-K stores comparative years side-by-side.
+      2. Most-recent period across all rows for this filing (fallback).
 
     Returns a ``(value, matched_concept)`` tuple so callers can record which
     alias actually resolved (provenance). Returns ``(None, None)`` when no
     concept in ``concept_names`` matches.
     """
+    from datetime import date as date_type
+
     for concept in concept_names:
         base = (
             select(FinancialLineItemORM.value)
@@ -156,19 +166,31 @@ def _get_value_for_concept(
                 FinancialLineItemORM.filing_id == filing_id,
                 FinancialLineItemORM.concept == concept,
             )
-            .order_by(FinancialLineItemORM.period_end.desc())
-            .limit(1)
         )
-        # Prefer the consolidated figure (frame != '' means SEC assigned a standard
-        # calendar-period identifier, which only happens for company-level totals).
-        val = session.execute(base.where(FinancialLineItemORM.frame != "")).scalar_one_or_none()
-        # Fallback: companies with non-December fiscal year-ends (e.g. Apple) have
-        # frame='' even on consolidated facts because the period doesn't align with
-        # a standard calendar year.
+
+        # --- Pass 1: exact period match (preferred) ---
+        if target_date is not None:
+            exact = base.where(FinancialLineItemORM.period_end == target_date)
+            # Prefer framed (consolidated) rows within the target period
+            val = session.execute(
+                exact.where(FinancialLineItemORM.frame != "").limit(1)
+            ).scalar_one_or_none()
+            if val is None:
+                val = session.execute(exact.limit(1)).scalar_one_or_none()
+            if val is not None:
+                return float(val), concept
+
+        # --- Pass 2: latest period, prefer framed ---
+        latest = base.order_by(FinancialLineItemORM.period_end.desc())
+        val = session.execute(
+            latest.where(FinancialLineItemORM.frame != "").limit(1)
+        ).scalar_one_or_none()
+        # Fallback: non-calendar FY companies have frame='' on consolidated facts
         if val is None:
-            val = session.execute(base).scalar_one_or_none()
+            val = session.execute(latest.limit(1)).scalar_one_or_none()
         if val is not None:
             return float(val), concept
+
     return None, None
 
 
@@ -177,6 +199,7 @@ def _derive_balance_sheet_aggregates(
     filing_id: int,
     values: dict[str, float | None],
     provenance: dict[str, str],
+    target_date=None,
 ) -> None:
     """Fill in ``total_liabilities`` / ``stockholders_equity`` when not tagged directly.
 
@@ -195,7 +218,7 @@ def _derive_balance_sheet_aggregates(
     if values.get("total_liabilities") is None:
         current = values.get("current_liabilities")
         noncurrent, _ = _get_value_for_concept(
-            session, filing_id, ["LiabilitiesNoncurrent"]
+            session, filing_id, ["LiabilitiesNoncurrent"], target_date
         )
         if current is not None and noncurrent is not None:
             values["total_liabilities"] = current + noncurrent
@@ -205,8 +228,8 @@ def _derive_balance_sheet_aggregates(
 
     # stockholders_equity (total, including NCI) from parent + minority interest
     if values.get("stockholders_equity") is None:
-        parent, _ = _get_value_for_concept(session, filing_id, ["StockholdersEquity"])
-        nci, _ = _get_value_for_concept(session, filing_id, ["MinorityInterest"])
+        parent, _ = _get_value_for_concept(session, filing_id, ["StockholdersEquity"], target_date)
+        nci, _ = _get_value_for_concept(session, filing_id, ["MinorityInterest"], target_date)
         if parent is not None:
             values["stockholders_equity"] = parent + (nci or 0.0)
             provenance["stockholders_equity"] = (
@@ -215,23 +238,15 @@ def _derive_balance_sheet_aggregates(
                 else "alias: StockholdersEquity (no NCI reported)"
             )
 
-    # Add redeemable NCI (mezzanine item between liabilities and permanent equity).
-    # Some filers (e.g. Tesla) report a "redeemable noncontrolling interest" that
-    # sits outside both Liabilities and the NCI-inclusive equity tag.  It must be
-    # included in the equity side for the accounting equation to balance.
-    redeemable_nci, _ = _get_value_for_concept(
-        session, filing_id, ["RedeemableNoncontrollingInterestEquityCarryingAmount"]
-    )
-    if redeemable_nci is not None and values.get("stockholders_equity") is not None:
-        values["stockholders_equity"] += redeemable_nci
-        provenance["stockholders_equity"] = (
-            provenance.get("stockholders_equity", "direct")
-            + " + RedeemableNoncontrollingInterest"
-        )
+    # NOTE: RedeemableNoncontrollingInterestEquityCarryingAmount is intentionally
+    # NOT merged into stockholders_equity here. It is fetched as a separate field
+    # (redeemable_nci) in get_financial_summary and included explicitly in
+    # check_accounting_equation. Keeping it separate makes the balance sheet
+    # components auditable and avoids conflating permanent equity with mezzanine items.
 
     # Last resort: balance-sheet identity (right-hand side total == total assets)
     total_rhs, _ = _get_value_for_concept(
-        session, filing_id, ["LiabilitiesAndStockholdersEquity"]
+        session, filing_id, ["LiabilitiesAndStockholdersEquity"], target_date
     )
     if total_rhs is not None:
         if (
@@ -311,6 +326,8 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                     "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
                     "StockholdersEquity",
                 ],
+                "retained_earnings": ["RetainedEarningsAccumulatedDeficit"],
+                "redeemable_nci": ["RedeemableNoncontrollingInterestEquityCarryingAmount"],
                 "cash": [
                     "CashAndCashEquivalentsAtCarryingValue",
                     "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
@@ -320,16 +337,22 @@ def get_financial_summary(filing_id: int) -> FinancialPeriod | ToolError:
                 "cash_from_financing": ["NetCashProvidedByUsedInFinancingActivities"],
             }
 
+            # Use the filing's primary period as the anchor date so all concepts
+            # are read from the same year. A single 10-K accession may contain
+            # comparative data from prior years; without anchoring, concepts with
+            # different frame coverage can resolve to different periods.
+            target_date = filing.period_of_report
+
             values: dict[str, float | None] = {}
             provenance: dict[str, str] = {}
             for key, concepts in indicators.items():
-                val, matched = _get_value_for_concept(session, filing_id, concepts)
+                val, matched = _get_value_for_concept(session, filing_id, concepts, target_date)
                 values[key] = val
                 provenance[key] = matched if matched is not None else "not_found"
 
             # Fill in balance-sheet aggregates that filers often omit (e.g. the
             # aggregate Liabilities, or NCI-adjusted equity) by composition.
-            _derive_balance_sheet_aggregates(session, filing_id, values, provenance)
+            _derive_balance_sheet_aggregates(session, filing_id, values, provenance, target_date)
 
             critical_missing = [k for k, v in values.items() if v is None]
             found_count = len(values) - len(critical_missing)

@@ -125,14 +125,19 @@ class FilingIngestionService:
             total_line_items = 0
             for accession, fact_values in grouped.items():
                 first_value = fact_values[0][1]
+                # Use the most recent period end as the primary filing period.
+                # fact_values contains facts from multiple comparative years within
+                # the same 10-K accession; first_value.end may be an older
+                # comparative date, not the actual reporting period.
+                latest_value = max(fact_values, key=lambda cv: cv[1].end)[1]
                 filing = filing_repo.upsert(
                     company_id=company.id,
                     accession_number=accession,
                     filing_type=first_value.form or "10-K",
                     filing_date=first_value.filed or first_value.end,
-                    period_of_report=first_value.end,
-                    fiscal_year=first_value.fy or first_value.end.year,
-                    fiscal_period=first_value.fp or "FY",
+                    period_of_report=latest_value.end,
+                    fiscal_year=latest_value.fy or latest_value.end.year,
+                    fiscal_period=latest_value.fp or "FY",
                 )
 
                 line_item_rows = self._build_line_item_rows(filing.id, fact_values)

@@ -46,7 +46,11 @@ YOUR WORKFLOW:
 
 CRITICAL RULES:
 - RED FLAGS ARE MANDATORY: If any of the conditions in step 3 are met, you MUST include corresponding RedFlag objects in the `red_flags` array of `submit_investigation`.
-- CONSISTENCY: If `evasive_language_detected` is True, you MUST have at least one RedFlag for evasive language.
+- CONSISTENCY (both directions must hold):
+  - If `evasive_language_detected` is True → you MUST have at least one RedFlag about evasive language.
+  - If you create a RedFlag about evasive language → `evasive_language_detected` MUST be True.
+  - If `evasive_language_detected` is False → you MUST NOT have any RedFlag titled "Evasive Language Detected".
+  - Never contradict yourself between the boolean fields and the red_flags array.
 - TOTAL TOOL CALLS LIMIT: You are strictly forbidden from calling search tools more than 3 times.
 - After 3 searches, you MUST proceed to 'submit_investigation'.
 - Base findings ONLY on actual text returned by tools. NEVER fabricate quotes or facts.
@@ -104,13 +108,29 @@ def extract_investigation_from_messages(messages: list) -> Optional[Investigatio
                                 except ValidationError:
                                     logger.warning("investigator_extraction_skip_invalid_flag", title=f.get("title"))
 
+                        # Derive evasive_language_detected from red flags as a
+                        # consistency guard: if the LLM created an evasive-language
+                        # flag but forgot to set the boolean, the boolean wins from
+                        # the flags (ground truth is what was flagged, not a field
+                        # that can be contradicted by the flags themselves).
+                        evasive_from_flags = any(
+                            "evasive" in (f.get("title", "") + f.get("description", "")).lower()
+                            for f in raw_flags
+                            if isinstance(f, dict)
+                        )
+                        evasive_detected = (
+                            report_data.get("evasive_language_detected")
+                            or report_data.get("evasive_language")
+                            or evasive_from_flags
+                        )
+
                         return InvestigationReport(
                             filing_id=report_data.get("filing_id"),
                             summary=report_data.get("summary") or report_data.get("category", ""),
                             mdna_findings=report_data.get("mdna_findings") or report_data.get("summary", ""),
                             risk_factors_summary=report_data.get("risk_factors_summary") or ", ".join(report_data.get("risks_identified", [])),
                             related_parties_detected=report_data.get("related_parties_detected", []),
-                            evasive_language_detected=report_data.get("evasive_language_detected", report_data.get("evasive_language", False)),
+                            evasive_language_detected=bool(evasive_detected),
                             red_flags=mapped_flags,
                             key_quotes=report_data.get("key_quotes", [])
                         )

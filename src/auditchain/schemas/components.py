@@ -68,6 +68,15 @@ class FinancialPeriod(BaseModel):
     total_liabilities: float | None = Field(None, description="Total Liabilities")
     current_liabilities: float | None = Field(None, description="Total Current Liabilities")
     stockholders_equity: float | None = Field(None, description="Total Stockholders' Equity")
+    retained_earnings: float | None = Field(None, description="Retained Earnings (Accumulated Deficit) — cumulative, used as Altman X2")
+    redeemable_nci: float | None = Field(
+        None,
+        description=(
+            "Redeemable Noncontrolling Interest (mezzanine equity). "
+            "Sits between liabilities and permanent equity on the balance sheet. "
+            "Must be included in the equity side of the accounting equation."
+        ),
+    )
     cash: float | None = Field(None, description="Cash and Cash Equivalents")
     
     # Cash Flow
