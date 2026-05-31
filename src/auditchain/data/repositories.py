@@ -183,6 +183,8 @@ class FinancialLineItemRepository:
                 "unit": stmt.excluded.unit,
                 "decimals": stmt.excluded.decimals,
                 "period_start": stmt.excluded.period_start,
+                "quality_flag": stmt.excluded.quality_flag,
+                "value_source": stmt.excluded.value_source,
             },
         )
         self._session.execute(stmt)

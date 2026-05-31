@@ -127,7 +127,7 @@ class TestTeslaGoldenValues:
         # Find any filing that contains a revenue entry with CY2024 frame
         found = False
         for accn, fact_values in grouped.items():
-            for concept_name, fv in fact_values:
+            for concept_name, fv, _src in fact_values:
                 if (
                     concept_name == TSLA_GOLDEN["revenue_concept"]
                     and fv.frame == "CY2024"
@@ -144,7 +144,7 @@ class TestTeslaGoldenValues:
 
         # Take any filing that has revenue data
         for accn, fact_values in grouped.items():
-            rows = FilingIngestionService._build_line_item_rows(1, fact_values)
+            rows = FilingIngestionService._build_line_item_rows(1, fact_values)  # type: ignore[arg-type]
             revenue_rows = [r for r in rows if r["concept"] == TSLA_GOLDEN["revenue_concept"]]
             if revenue_rows:
                 for row in revenue_rows:
@@ -204,7 +204,7 @@ class TestAppleGoldenValues:
             and fv.end == target_period
             and fv.val == target_val
             for fact_values in grouped.values()
-            for concept_name, fv in fact_values
+            for concept_name, fv, _src in fact_values
         )
         assert found, "Apple FY2024 revenue not found after _group_facts_by_filing"
 

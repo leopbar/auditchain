@@ -201,24 +201,38 @@ def _get_value_for_concept(
             )
         )
 
-        # --- Pass 1: exact period match (preferred) ---
+        clean = FinancialLineItemORM.quality_flag == None  # noqa: E711
+
+        # --- Pass 1: exact period match, clean, framed ---
         if target_date is not None:
             exact = base.where(FinancialLineItemORM.period_end == target_date)
-            # Prefer framed (consolidated) rows within the target period
             val = session.execute(
-                exact.where(FinancialLineItemORM.frame != "").limit(1)
+                exact.where(FinancialLineItemORM.frame != "").where(clean).limit(1)
             ).scalar_one_or_none()
+            if val is None:
+                val = session.execute(exact.where(clean).limit(1)).scalar_one_or_none()
+            # Fallback: flagged value at exact period (better than wrong period)
+            if val is None:
+                val = session.execute(
+                    exact.where(FinancialLineItemORM.frame != "").limit(1)
+                ).scalar_one_or_none()
             if val is None:
                 val = session.execute(exact.limit(1)).scalar_one_or_none()
             if val is not None:
                 return float(val), concept
 
-        # --- Pass 2: latest period, prefer framed ---
+        # --- Pass 2: latest period, prefer clean + framed ---
         latest = base.order_by(FinancialLineItemORM.period_end.desc())
         val = session.execute(
-            latest.where(FinancialLineItemORM.frame != "").limit(1)
+            latest.where(FinancialLineItemORM.frame != "").where(clean).limit(1)
         ).scalar_one_or_none()
-        # Fallback: non-calendar FY companies have frame='' on consolidated facts
+        if val is None:
+            val = session.execute(latest.where(clean).limit(1)).scalar_one_or_none()
+        # Fallback: flagged value if nothing clean exists
+        if val is None:
+            val = session.execute(
+                latest.where(FinancialLineItemORM.frame != "").limit(1)
+            ).scalar_one_or_none()
         if val is None:
             val = session.execute(latest.limit(1)).scalar_one_or_none()
         if val is not None:

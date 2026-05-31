@@ -487,33 +487,36 @@ def _delete_existing_company_data(cik: str) -> dict[str, int]:
             ).scalars().all()
         ]
 
-        # Find audit runs referencing those filings
+        # Delete ALL audit runs for this company (FK on company_id, not just filing_id).
+        # Querying only by filing_id misses runs with filing_id=NULL or runs from
+        # other filings, which would block the final DELETE on companies.
+        audit_run_ids = [
+            r.id for r in
+            session.execute(
+                select(AuditRunORM).where(AuditRunORM.company_id == company_id)
+            ).scalars().all()
+        ]
+
+        if audit_run_ids:
+            # Delete red_flags
+            result = session.execute(
+                delete(RedFlagORM).where(RedFlagORM.run_id.in_(audit_run_ids))
+            )
+            counts["red_flags"] = result.rowcount
+
+            # Delete agent_steps
+            result = session.execute(
+                delete(AgentStepORM).where(AgentStepORM.run_id.in_(audit_run_ids))
+            )
+            counts["agent_steps"] = result.rowcount
+
+            # Delete audit_runs
+            result = session.execute(
+                delete(AuditRunORM).where(AuditRunORM.id.in_(audit_run_ids))
+            )
+            counts["audit_runs"] = result.rowcount
+
         if filing_ids:
-            audit_run_ids = [
-                r.id for r in
-                session.execute(
-                    select(AuditRunORM).where(AuditRunORM.filing_id.in_(filing_ids))
-                ).scalars().all()
-            ]
-
-            if audit_run_ids:
-                # Delete red_flags
-                result = session.execute(
-                    delete(RedFlagORM).where(RedFlagORM.run_id.in_(audit_run_ids))
-                )
-                counts["red_flags"] = result.rowcount
-
-                # Delete agent_steps
-                result = session.execute(
-                    delete(AgentStepORM).where(AgentStepORM.run_id.in_(audit_run_ids))
-                )
-                counts["agent_steps"] = result.rowcount
-
-                # Delete audit_runs
-                result = session.execute(
-                    delete(AuditRunORM).where(AuditRunORM.id.in_(audit_run_ids))
-                )
-                counts["audit_runs"] = result.rowcount
 
             # Delete disclosures
             result = session.execute(

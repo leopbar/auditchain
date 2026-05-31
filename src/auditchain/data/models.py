@@ -122,6 +122,8 @@ class FinancialLineItemORM(Base):
     period_start: Mapped[date | None] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     frame: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    quality_flag: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
+    value_source: Mapped[str | None] = mapped_column(String(30), nullable=True, default=None)
 
     filing: Mapped[FilingORM] = relationship(back_populates="line_items")
 
