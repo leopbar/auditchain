@@ -109,7 +109,7 @@ def build_reconciler_agent() -> Any:
     settings = get_settings()
 
     llm = ChatOpenAI(
-        model=settings.llm_fast_model,
+        model=settings.llm_smart_model,
         api_key=settings.openai_api_key.get_secret_value(),
         temperature=0,
     )
@@ -129,7 +129,7 @@ def build_reconciler_agent() -> Any:
 
     logger.info(
         "reconciler_agent_built",
-        model=settings.llm_fast_model,
+        model=settings.llm_smart_model,
         tool_count=len(tools)
     )
 
