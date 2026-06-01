@@ -1,6 +1,6 @@
 # AuditChain 🔍
 
-### A multi-agent AI system that audits SEC filings the way a senior auditor would — except it does it in 2 minutes for $0.30.
+### A multi-agent AI system that audits SEC filings the way a senior auditor would — except it does it in 2 minutes for under $0.20.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-v0.110-009688?logo=fastapi&logoColor=white)
@@ -22,23 +22,29 @@ The production version of AuditChain is live at:
 ---
 
 ## 🚩 The Problem
-Forensic analysis of SEC 10-K filings is a nightmare of complexity. You have to verify accounting equations across years, calculate quantitative models like Beneish M-Score and Altman Z-Score, and perform qualitative language analysis across thousands of pages of legalese. 
+Forensic analysis of SEC 10-K filings is a nightmare of complexity. You have to verify accounting equations across years, calculate quantitative models like Beneish M-Score and Altman Z-Score, and perform qualitative language analysis across thousands of pages of legalese.
 
 Big Four firms take days to do this and charge a fortune. Even then, massive frauds like Wirecard, Luckin Coffee, and Wells Fargo escaped detection for years. Human auditors get tired, they miss patterns, and they are expensive. In short: forensic auditing is slow, pricey, and surprisingly fallible.
 
 ## 🧠 The Approach
-AuditChain explores a simple hypothesis: what if we could build a multi-agent system where each agent is a specialist in one dimension of the audit? 
+AuditChain explores a simple hypothesis: what if we could build a multi-agent system where each agent is a specialist in one dimension of the audit?
 
-Coordinated by **LangGraph**, five specialized agents work together in a structured workflow. They don't just "chat"—they use validated tools to extract data, perform math, and search through text via **RAG (pgvector)**. Every decision is grounded in real filing data, and every agent output is validated against strict Pydantic schemas. It’s an automated, high-fidelity forensic pipeline that keeps a full audit trail of its reasoning.
+Coordinated by **LangGraph**, five specialized agents work together in a structured workflow. They don't just "chat" — they use validated tools to extract data, perform math, and search through text via **RAG (pgvector)**. Every decision is grounded in real filing data, and every agent output is validated against strict Pydantic schemas.
+
+Before any agent sees the data, a **DQC-inspired ingestion validator** runs 5 layers of quality checks on the raw XBRL facts from SEC EDGAR — catching bad values, wrong periods, and cross-statement inconsistencies before they reach the models. It's an automated, high-fidelity forensic pipeline that keeps a full audit trail of its reasoning.
 
 ## ✨ What It Does
-- **Multi-agent fraud detection pipeline**: Coordinated execution via LangGraph.
-- **Real-time progress streaming**: Watch the agents work via Server-Sent Events (SSE).
+- **Multi-agent fraud detection pipeline**: 5 specialized agents coordinated via LangGraph.
+- **DQC-inspired data quality validation**: 5-layer XBRL quality checks on ingestion — sign checks, period duration, cross-concept consistency, YoY plausibility, and cross-statement reconciliation.
+- **Quarterly aggregation**: When a company's XBRL doesn't include an annual total (DQC Rule 0146 violation), the system reconstructs it by summing Q1+Q2+Q3+Q4 automatically.
+- **Real-time progress streaming**: Watch agents work via Server-Sent Events (SSE) — both during ingestion and audit.
 - **RAG over filing text**: High-density vector search using `pgvector` and `text-embedding-3-small`.
-- **Quantitative forensic models**: Automated Beneish M-Score, Altman Z-Score, and Accruals analysis.
-- **Self-service company onboarding**: Ingest any of the ~10,000 SEC-registered companies on demand.
+- **Quantitative forensic models**: Automated Beneish M-Score, Altman Z-Score, and Accruals analysis — with sector-aware gating via SIC codes (e.g. financial sector is excluded from Altman, which was calibrated for manufacturing).
+- **Self-service company onboarding**: Ingest any of the ~10,000 SEC-registered companies on demand via a 5-stage pipeline (validate → download facts → download filings → parse XBRL → embed text).
+- **Model-aware cost tracking**: Every audit's cost is calculated per message from the actual model name returned by the OpenAI API — pricing automatically reflects which agent uses which model.
+- **JWT authentication**: Full user management with access/refresh tokens, rate limiting, and admin endpoints.
 - **Persistent audit history**: Every run is stored in a relational database for future review.
-- **Professional executive reports**: High-fidelity summaries with deterministic risk scoring.
+- **Professional executive reports**: High-fidelity summaries with deterministic risk scoring (no LLM-guessed numbers).
 
 ## 🖼️ Demo
 To see AuditChain in action, we've broken down the pipeline into three key stages:
@@ -60,7 +66,15 @@ To see AuditChain in action, we've broken down the pipeline into three key stage
 graph TD
     User((User/Browser)) -->|Next.js 15| FE[Frontend App]
     FE -->|REST / SSE| API[FastAPI Backend]
-    
+    API -->|JWT Auth| Auth[Auth Service]
+
+    subgraph "Ingestion Pipeline"
+        API --> ING[5-Stage Ingestion]
+        ING -->|validate / download / parse / embed| SEC[SEC EDGAR API]
+        ING -->|DQC Quality Validator| DQC[5-Layer XBRL Checks]
+        DQC --> DB[(PostgreSQL)]
+    end
+
     subgraph "AI Audit Engine (LangGraph)"
         API --> LG[Workflow Controller]
         LG --> Collector[Collector Agent]
@@ -69,13 +83,13 @@ graph TD
         LG --> Investigator[Investigator Agent]
         LG --> Supervisor[Supervisor Agent]
     end
-    
-    Collector -->|Fetch| SEC[SEC EDGAR API]
+
     Investigator -->|Vector Search| PGV[(PostgreSQL + pgvector)]
     LG -->|LLM Calls| OAI[OpenAI GPT-4o / mini]
-    LG -->|Persistence| DB[(PostgreSQL)]
+    LG -->|Persistence| DB
 
     style LG fill:#f9f,stroke:#333,stroke-width:2px
+    style DQC fill:#ffe,stroke:#333,stroke-width:2px
 ```
 
 The system uses a stateful graph where agents append their findings to a shared `AuditState`. The **Supervisor** acts as the final judge, consolidating reports and calculating the risk score. For a deeper dive into the "why" behind the design, check out [docs/architecture.md](docs/architecture.md).
@@ -84,13 +98,44 @@ The system uses a stateful graph where agents append their findings to a shared 
 
 | Agent | Role | Tools | Model |
 | :--- | :--- | :--- | :--- |
-| **Collector** | Gathers data from SEC | `get_company`, `list_filings`, `get_financial_summary`, `submit_company_data` | `gpt-4o-mini` |
-| **Reconciler** | Mathematical consistency | `check_accounting_equation`, `check_yoy_consistency`, `compare_income_vs_cashflow`, `submit_reconciliation` | `gpt-4o-mini` |
-| **Quant Analyst** | Forensic fraud models | `compute_beneish_mscore_simplified`, `compute_altman_zscore_simplified`, `compute_accruals_ratio`, `submit_quant_analysis` | `gpt-4o-mini` |
+| **Collector** | Gathers data from SEC EDGAR | `get_company`, `list_filings`, `get_financial_summary`, `submit_company_data` | `gpt-4o` |
+| **Reconciler** | Mathematical consistency checks | `check_accounting_equation`, `check_yoy_consistency`, `compare_income_vs_cashflow`, `submit_reconciliation` | `gpt-4o` |
+| **Quant Analyst** | Forensic fraud models | `compute_beneish_mscore_simplified`, `compute_altman_zscore_simplified`, `compute_accruals_ratio`, `submit_quant_analysis` | `gpt-4o` |
 | **Investigator** | Qualitative RAG analysis | `search_disclosures`, `find_related_parties`, `detect_language_patterns`, `submit_investigation` | `gpt-4o-mini` |
-| **Supervisor** | Consolidation & Scoring | *None (Pure Reasoning)* | `gpt-4o` |
+| **Supervisor** | Consolidation & scoring | *None (pure reasoning over structured inputs)* | `gpt-4o-mini` |
 
 Every agent follows the **"Submit Tool Pattern"**: they perform their work and eventually call a specific `submit_x` tool. This ensures the output is structured, validated by Pydantic, and ready for the next node in the graph.
+
+The Reconciler and Quant produce **tri-state results** (`passed` / `failed` / `inconclusive`). Missing or unreadable data is always `inconclusive` — it never forces an `ADVERSE` conclusion. Only a genuine accounting-integrity failure (numbers present but the balance sheet provably does not balance) can produce `ADVERSE`.
+
+## 🔬 Data Quality Layer (DQC-Inspired)
+
+SEC EDGAR XBRL data is notoriously inconsistent. Companies frequently tag quarterly revenue with an annual (`fp=FY`) label, omit the annual total entirely, or report incorrect period durations. The ingestion validator catches these issues before any agent sees the data.
+
+### 5 Validation Layers
+
+| Layer | What it checks | DQC reference |
+| :--- | :--- | :--- |
+| **1. Sign checks** | Revenue, assets, liabilities, share counts must always be positive | DQC Rule 0015 |
+| **2. Period duration** | Income statement and cash-flow items must cover 300–400 days (annual) | DQC Rule 0146 |
+| **3. Cross-concept** | Cost of revenue must not exceed revenue; gross profit cannot exceed revenue | DQC Rule 0015 family |
+| **4. YoY plausibility** | >3× YoY increase or >90% drop triggers a flag on the relevant concept | Inspired by DQC |
+| **5. Cross-statement** | Cash flow equation (prior cash + CFO + CFI + CFF ≈ current cash); cash BS vs. CF statement; retained earnings bridge | DQC Rule 0057 |
+
+### Quarterly Aggregation
+
+When a company's 10-K does not tag an annual revenue total (a common DQC Rule 0146 violation), the ingestion pipeline automatically sums Q1 + Q2 + Q3 + Q4 from any available quarterly filings and stores the result with `value_source = "aggregated_4q"`. This prevents partial-quarter figures from silently distorting all downstream models.
+
+### value_source & quality_flag
+
+Every row in `financial_line_items` carries two provenance columns:
+
+| Column | Values | Meaning |
+| :--- | :--- | :--- |
+| `value_source` | `annual_direct`, `aggregated_4q`, `duration_fallback` | How the value was obtained |
+| `quality_flag` | `NULL` (clean), or a string like `duration_mismatch`, `yoy_3x_jump` | What quality issue was detected |
+
+When reading data, the system always prefers clean (`quality_flag IS NULL`) rows and falls back to flagged values only when no clean alternative exists.
 
 ## 📊 Evaluation Results
 We tested AuditChain against 5 distinct companies (Apple, Tesla, Bausch Health, HP, and Occidental Petroleum).
@@ -107,32 +152,15 @@ We tested AuditChain against 5 distinct companies (Apple, Tesla, Bausch Health, 
 | **Known Fraud** | 2 (BHC, HPQ) ✓ | 0 |
 | **Clean/Healthy** | 2 (TSLA, OXY) ✗ | 1 (AAPL) ✓ |
 
-**Why the false positives?** 
-AuditChain is aggressive. It correctly identified **Bausch Health (BHC)** and **HP (HPQ)** as adverse due to their known historical accounting issues. However, the Altman Z-Score (a 1968 model) often penalizes capital-intensive growth companies like **Tesla**. Additionally, XBRL parsing can sometimes be tripped up by non-standard equity structures in companies like **Occidental**. A sample size of 5 isn't statistically meaningful, but the failure modes are well-understood and lean towards caution.
+### Known Limitations
 
-### 🔬 Understanding the False Positives
-
-Running **Tesla** or **Occidental Petroleum** through AuditChain currently produces an "ADVERSE Opinion" with a Risk Score of 100/100. For companies audited by the likes of PwC and Deloitte, this may seem disproportionate. However, these false positives are not random bugs—they are the direct consequence of three identified structural limitations in the current engine.
-
-#### Case Study: Tesla (TSLA)
-Tesla serves as a perfect stress test for the system's current logic. Despite being a financially healthy organization, the system triggers the following flags:
-- **1 CRITICAL**: "Unbalanced Balance Sheet" ($137B discrepancy) — **Cause**: the XBRL parser matched a single alias per concept and missed Tesla's standard US-GAAP NCI-inclusive equity tag (`StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest`), so equity read as empty and the equation could not balance. **This is not a custom taxonomy** — it is a standard US-GAAP tag. Fixed: prioritized alias lists + composition-based derivation; missing data now yields an *inconclusive* check, never ADVERSE.
-- **4 HIGH**: "Significant YoY Net Income Decline" (74.7%, 69.8%, 50.8% etc.) — **Cause**: Rigid thresholds without sector-specific adjustment.
-- **1 HIGH**: "Significant YoY Total Liabilities Increase" — **Cause**: Rigid thresholds.
-- **1 HIGH**: "High Bankruptcy Risk - Distress Zone" (Altman 1.72) — **Cause**: 1968 model not calibrated for modern tech/growth profiles.
-- **2 MEDIUM**: "Evasive Language" + "Related Party" — **Cause**: Qualitative analysis picking up on complex corporate disclosures.
-
-Total: 9 flags. While the Altman score is technically "correct" per the 1968 formula, the other flags stem from structural constraints that are well-understood.
-
-#### The 3 Structural Limitations
-
-| Limitation | Impact | Planned Fix |
-| :--- | :--- | :--- |
-| **Sector-agnostic forensic models** | Altman Z-Score (1968) was calibrated for industrial manufacturing companies. It penalizes capital-intensive growth firms (Tesla, Amazon historically, Uber) by treating high asset utilization as financial distress. The model predates modern tech business models. | Add a **Planner Agent** that selects sector-specific thresholds before the Quant Analyst runs (see Roadmap). |
-| **XBRL value lookup used a single alias per concept** | The cause was **not** custom taxonomies. `tools/financial_data.py` matched only one exact concept name per indicator, so standard US-GAAP variants — Tesla's NCI-inclusive equity `StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest`, or filers that tag only `LiabilitiesCurrent` + `LiabilitiesNoncurrent` instead of the aggregate — read as empty. The verdict logic then treated *missing data* as a *failure* and forced **ADVERSE**. **Fixed:** prioritized alias lists (NCI-inclusive equity first) + composition-based derivation in `tools/financial_data.py`, plus a tri-state check (`passed` / `failed` / `inconclusive`) so missing data is always inconclusive, never ADVERSE. |
-| **Rigid YoY variation thresholds** | The Reconciler flags any year-over-year change above 50% as suspicious. This works for stable industries but generates noise for cyclical businesses (commodities like Occidental, growth companies like Tesla) where 50%+ swings are financial reality, not fraud signals. | Move thresholds from hardcoded values to dynamic ones informed by industry baselines (e.g., S&P sector medians). |
-
-These are not edge cases—they are documented architectural choices. AuditChain prioritizes recall over precision: we'd rather flag too many companies than miss a real fraud. The false positives on Tesla and Occidental demonstrate the system working as designed under known limitations, not failing unexpectedly. Each limitation has a clear path forward in the roadmap.
+| Limitation | Status |
+| :--- | :--- |
+| **XBRL concept aliases** — single alias per concept missed standard US-GAAP variants (e.g. Tesla's NCI-inclusive equity tag). Balance sheet could not balance → forced ADVERSE. | ✅ **Fixed**: prioritized alias lists, composition-based derivation, tri-state checks (missing data = inconclusive, never ADVERSE). |
+| **XBRL period tagging errors** — quarterly revenue tagged as annual silently corrupted all downstream models (Beneish, YoY). | ✅ **Fixed**: DQC-inspired 5-layer ingestion validator + quarterly aggregation fallback. |
+| **Sector-agnostic Altman Z-Score** — the 1968 model was calibrated for manufacturing; it structurally penalizes growth companies and financial institutions. | ✅ **Partially fixed**: SIC-based sector detection gates the Altman score for financial-sector companies (banks, REITs, insurance). Capital-intensive growth companies (semiconductors, EV) remain a known edge case. |
+| **Rigid YoY thresholds** — fixed 50% swing thresholds generate noise for cyclical industries. | 🔧 **Planned**: dynamic thresholds informed by S&P sector medians (Planner Agent on roadmap). |
+| **Mandatory qualitative flags** — Investigator was forced to flag every filing regardless of evidence, producing false positives for clean companies. | ✅ **Fixed**: evidence-based prompt requires a specific quoted passage before any flag is created; clean investigation is a valid outcome. |
 
 ## 🛠️ Tech Stack
 | Backend | Frontend |
@@ -141,6 +169,7 @@ These are not edge cases—they are documented architectural choices. AuditChain
 | LangGraph, LangChain | Tailwind CSS, shadcn/ui |
 | PostgreSQL + pgvector | Framer Motion, Recharts |
 | SQLAlchemy 2.0, Pydantic v2 | Lucide Icons, EventSource (SSE) |
+| JWT (python-jose), slowapi | |
 
 ## 🚀 Getting Started
 
@@ -160,18 +189,35 @@ These are not edge cases—they are documented architectural choices. AuditChain
    ```
 
 2. **Environment**
-   Create a `.env` in the root:
+   Create a `.env` in the root (see `.env.example` for all options):
    ```env
+   # LLM
    OPENAI_API_KEY=your_key_here
+   LLM_FAST_MODEL=gpt-4o-mini
+   LLM_SMART_MODEL=gpt-4o
+
+   # SEC EDGAR (required — SEC identifies callers by User-Agent)
    SEC_USER_AGENT="Your Name yourname@example.com"
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/auditchain
+
+   # Database
+   POSTGRES_USER=auditchain
+   POSTGRES_PASSWORD=auditchain_dev
+   POSTGRES_DB=auditchain
+   POSTGRES_HOST=localhost
+   POSTGRES_PORT=5432
+   DATABASE_URL=postgresql+asyncpg://auditchain:auditchain_dev@localhost:5432/auditchain
    ```
 
 3. **Infrastructure**
    ```bash
    docker compose up -d
-   # Wait for DB to be ready, then:
-   # (Schema is automatically handled or run infra/sql/001_init.sql)
+   ```
+   Then apply the database migrations in order:
+   ```bash
+   # Run all SQL files in infra/sql/ sequentially
+   for f in infra/sql/*.sql; do
+     docker exec -i auditchain-postgres psql -U auditchain -d auditchain < "$f"
+   done
    ```
 
 4. **Launch**
@@ -189,31 +235,46 @@ These are not edge cases—they are documented architectural choices. AuditChain
 ## 📁 Project Structure
 ```text
 auditchain/
-├── src/auditchain/          # Backend Python
-│   ├── agents/              # 5 specialized AI agents logic
-│   ├── api/                 # FastAPI routes + SSE streaming
-│   ├── data/                # SQLAlchemy models & Ingestion
-│   ├── graph/               # LangGraph workflow & state
-│   ├── schemas/             # Pydantic data structures
-│   └── tools/               # Custom tools used by agents
+├── src/auditchain/
+│   ├── agents/              # 5 specialized AI agents
+│   ├── api/
+│   │   ├── events/          # SSE pub/sub (audit + ingestion streaming)
+│   │   ├── routers/         # FastAPI routes (auth, companies, audits, ingestion, admin)
+│   │   └── services/        # Background task runners
+│   ├── auth/                # JWT authentication (access/refresh tokens, user management)
+│   ├── core/                # Config, logging, model-aware pricing
+│   ├── data/
+│   │   ├── ingestion.py     # XBRL ingestion with two-pass annual resolution
+│   │   ├── ingestion_validator.py  # DQC-inspired 5-layer quality checks
+│   │   └── text_ingestion.py       # SEC text → chunks → embeddings
+│   ├── graph/               # LangGraph workflow, state, cost tracking
+│   ├── schemas/             # Pydantic contracts (reports, components, enums)
+│   └── tools/               # Agent tools (financial data, quantitative, investigation)
 ├── frontend/                # Next.js 15 application
-├── infra/                   # Docker config & SQL migrations
-├── scripts/                 # Data ingestion & CLI utilities
+├── infra/
+│   ├── docker/              # Docker Compose configs (dev + prod)
+│   └── sql/                 # 14 database migrations (001–014)
+├── scripts/                 # CLI utilities
 └── docs/                    # Architecture docs & ADRs
 ```
 
 ## 📐 Key Design Decisions
-- **Multi-agent over Monolithic**: Specialized agents provide better observability, easier debugging, and lower cost (via gpt-4o-mini).
+- **Multi-agent over monolithic**: Specialized agents provide better observability, easier debugging, and cost optimization (analytical agents on `gpt-4o`; formatting agents on `gpt-4o-mini`).
 - **Pydantic Submit-Tool Pattern**: Guarantees structured data flow between nodes; no fragile regex parsing of LLM markdown.
+- **Mark, don't block**: Suspicious XBRL values receive a `quality_flag` and are stored for auditability. The read path always prefers clean values, with flagged ones as a last resort. Data is never silently discarded.
+- **Model-aware pricing**: Cost is calculated from the model name the API actually reports on each response — not hardcoded. Changing a model's assignment automatically updates the cost breakdown.
 - **pgvector**: Keeps all data in a single source of truth (PostgreSQL) instead of managing a separate vector database.
 - **SSE over WebSockets**: Perfect for server-to-client progress updates with zero overhead and automatic reconnection.
-- **Deterministic Risk Scoring**: Scores are calculated by a formula (INFO=1 to CRITICAL=25) rather than asking an LLM to guess a number. This ensures reproducibility.
+- **Deterministic Risk Scoring**: Scores are calculated by a formula (INFO=1 to CRITICAL=25) rather than asking an LLM to guess a number. This ensures reproducibility and auditability.
 
 See [docs/adrs/](docs/adrs/) for detailed Architecture Decision Records.
 
 ## 🚧 Roadmap
-- [ ] **Planner Agent**: For sector-aware audit strategies.
-- [ ] **Advanced XBRL Parser**: Better handling of custom equity and complex GAAP extensions.
+- [x] **XBRL data quality layer**: DQC-inspired 5-layer validator, quarterly aggregation, quality_flag/value_source provenance.
+- [x] **Sector-aware Altman gating**: SIC-based sector detection prevents financial-sector companies from triggering a model calibrated for manufacturing.
+- [x] **Evidence-based Investigator**: Qualitative flags require specific quoted evidence from filing text.
+- [ ] **Planner Agent**: Dynamic, sector-aware audit strategy with calibrated thresholds.
+- [ ] **Advanced XBRL extensions**: Custom taxonomy handling for segment disclosures and non-standard equity structures.
 - [ ] **PDF Export**: Generate high-fidelity audit reports for offline review.
 - [ ] **Comparative Analysis**: Side-by-side audit of multiple companies.
 
