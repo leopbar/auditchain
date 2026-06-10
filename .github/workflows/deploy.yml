@@ -20,15 +20,17 @@ jobs:
           script: |
             set -e
 
-            mkdir -p /opt/auditchain
-            cd /opt/auditchain
+            APP_DIR=/opt/auditchain
 
-            # Clone or pull latest code (must happen before writing .env)
-            if [ ! -d ".git" ]; then
-              git clone https://github.com/leopbar/auditchain.git .
+            # Clone on first deploy, pull on subsequent deploys
+            if [ -d "$APP_DIR/.git" ]; then
+              git -C "$APP_DIR" pull origin main
             else
-              git pull origin main
+              rm -rf "$APP_DIR"
+              git clone https://github.com/leopbar/auditchain.git "$APP_DIR"
             fi
+
+            cd "$APP_DIR"
 
             # Write .env from GitHub secret
             printf '%s' "$VPS_ENV" > .env
