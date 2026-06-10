@@ -10,17 +10,31 @@ jobs:
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
+        env:
+          VPS_ENV: ${{ secrets.VPS_ENV }}
         with:
-          host: 72.62.96.223
+          host: 13.140.166.97
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: VPS_ENV
           script: |
+            set -e
+
             mkdir -p /opt/auditchain
             cd /opt/auditchain
+
+            # Write .env from GitHub secret
+            printf '%s' "$VPS_ENV" > .env
+
+            # Clone or pull latest code
             if [ ! -d ".git" ]; then
               git clone https://github.com/leopbar/auditchain.git .
             else
               git pull origin main
             fi
+
+            # Build and restart containers
             docker compose -f docker-compose.prod.yml up -d --build
+
+            # Clean up unused images
             docker image prune -f
