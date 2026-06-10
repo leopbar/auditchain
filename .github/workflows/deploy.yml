@@ -23,15 +23,15 @@ jobs:
             mkdir -p /opt/auditchain
             cd /opt/auditchain
 
-            # Write .env from GitHub secret
-            printf '%s' "$VPS_ENV" > .env
-
-            # Clone or pull latest code
+            # Clone or pull latest code (must happen before writing .env)
             if [ ! -d ".git" ]; then
               git clone https://github.com/leopbar/auditchain.git .
             else
               git pull origin main
             fi
+
+            # Write .env from GitHub secret
+            printf '%s' "$VPS_ENV" > .env
 
             # Build and restart containers
             docker compose -f docker-compose.prod.yml up -d --build
