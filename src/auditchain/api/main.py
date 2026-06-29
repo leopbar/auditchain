@@ -35,6 +35,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS Configuration
 cors_origins = [
     "http://localhost:3000",
+    "http://localhost:3030",
     "https://audit-bigfour.duckdns.org",
     "https://audit.lbai.dev",
 ]

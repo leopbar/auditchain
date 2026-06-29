@@ -10,7 +10,7 @@ services:
     volumes:
       - auditchain_db_data:/var/lib/postgresql/data
     ports:
-      - "5434:5432"
+      - "${DB_PORT:-5434}:5432"
 
   backend:
     build:
@@ -26,8 +26,9 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      - ENVIRONMENT=production
+      - ENVIRONMENT=${ENVIRONMENT:-production}
       - SECRET_KEY=${SECRET_KEY}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-AuditChain Research contact@example.com}
     ports:
       - "8002:8000"
 
@@ -36,7 +37,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=https://audit.lbai.dev
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://audit.lbai.dev}
     container_name: auditchain-frontend
     restart: always
     depends_on:
@@ -44,7 +45,7 @@ services:
     environment:
       - INTERNAL_API_URL=http://auditchain-backend:8000
     ports:
-      - "3002:3000"
+      - "${FRONTEND_PORT:-3002}:3000"
 
 volumes:
   auditchain_db_data:

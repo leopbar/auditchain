@@ -8,7 +8,13 @@ import type {
   CreateAuditResponse,
 } from "@/types/audit";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// On the server (SSR/server components, running inside the docker network),
+// the backend must be reached via its internal service name. In the browser,
+// NEXT_PUBLIC_API_URL (baked in at build time) is the only option available.
+const API_URL =
+  (typeof window === "undefined" && process.env.INTERNAL_API_URL) ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8000";
 
 class ApiError extends Error {
   constructor(public status: number, public detail: string) {
